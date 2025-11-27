@@ -1,0 +1,24 @@
+relationship AutoDetected_0dac1ce9-29f9-4006-a33d-56fc53335c95
+	fromColumn: F_Productions.ID_D_Client
+	toColumn: D_Clients.ID_D_Client
+
+relationship AutoDetected_6a8760f0-9ea7-4664-b4cb-9d79610445c6
+	fromColumn: F_Productions.ID_D_Consultant
+	toColumn: D_Consultants.ID_D_Consultant
+
+relationship AutoDetected_afeba0f2-b3a3-4ed3-a887-f4175063122c
+	fromColumn: F_Productions.ID_D_Prestation
+	toColumn: D_Prestations.ID_D_Prestation
+
+relationship adcf7091-c088-fd78-6b85-bb0a8c83c299
+	fromColumn: F_Productions.ID_D_Date
+	toColumn: D_Dates.ID_D_Date
+
+relationship 21a516f9-0451-eb8e-1dbd-bf803a03ff30
+	fromColumn: F_Salaires.ID_D_Consultant
+	toColumn: D_Consultants.ID_D_Consultant
+
+relationship 1f829716-b178-eaec-f067-152fcb8d5f58
+	fromColumn: F_Salaires.ID_D_Date
+	toColumn: D_Dates.ID_D_Date
+
