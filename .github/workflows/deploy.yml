@@ -22,8 +22,7 @@ on:
         required: true
         default: 'dev'
         options: 
-        - dev
-        - prp   
+        - dev   
         - prd 
       workspace:
         type: string
