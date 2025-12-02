@@ -1,331 +1,257 @@
 import os
-import shutil
-import subprocess
-import re
+import sys
+import base64
 import json
+from typing import List, Dict, Optional
 
-def fab_authenticate_spn(
-    client_id: str = None, client_secret: str = None, tenant_id: str = None
-):
+import requests
+
+# Base Fabric REST API
+FABRIC_API_BASE = "https://api.fabric.microsoft.com/v1"
+
+
+class FabricAuthError(Exception):
+    """Authentication/Token errors."""
+    pass
+
+
+class FabricApiError(Exception):
+    """Fabric REST API call errors."""
+    pass
+
+
+def _get_env_or_fail(name: str) -> str:
+    """Get an env var or raise a clear error."""
+    value = os.getenv(name)
+    if not value:
+        raise FabricAuthError(f"Missing environment variable: {name}")
+    return value
+
+
+def get_access_token_spn() -> str:
     """
-    Authenticates with a Service Principal Name (SPN) using environment variables.
-    This function retrieves the client ID, client secret, and tenant ID from the environment
-    variables `FABRIC_CLIENT_ID`, `FABRIC_CLIENT_SECRET`, and `FABRIC_TENANT_ID` respectively.
-    It then uses these credentials to authenticate with the SPN.
-    Raises:
-        Exception: If any of the required environment variables (`FABRIC_CLIENT_ID`,
-                   `FABRIC_CLIENT_SECRET`, `FABRIC_TENANT_ID`) are not set.
-    Side Effects:
-        Executes the `run_fab_command` function to set the encryption fallback and perform the authentication.
+    Récupère un access token Microsoft Entra pour Fabric en client_credentials
+    (Service Principal) vers le scope Fabric: https://api.fabric.microsoft.com/.default
     """
+    tenant_id = _get_env_or_fail("FABRIC_TENANT_ID")
+    client_id = _get_env_or_fail("FABRIC_CLIENT_ID")
+    client_secret = _get_env_or_fail("FABRIC_CLIENT_SECRET")
 
-    print("Authenticating with SPN")
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        # Scope générique pour les APIs Fabric en client credentials
+        # cf. discussions communautaires :contentReference[oaicite:1]{index=1}
+        "scope": "https://api.fabric.microsoft.com/.default",
+    }
 
-    if client_id is None or client_secret is None or tenant_id is None:
-        client_id = os.getenv("FABRIC_CLIENT_ID")
-        client_secret = os.getenv("FABRIC_CLIENT_SECRET")
-        tenant_id = os.getenv("FABRIC_TENANT_ID")
-
-    if not tenant_id or not client_id or not client_secret:
-        raise Exception(
-            "Environment variables FABRIC_CLIENT_ID, FABRIC_CLIENT_SECRET and FABRIC_TENANT_ID must be set"
+    resp = requests.post(token_url, data=data)
+    if resp.status_code != 200:
+        raise FabricAuthError(
+            f"Failed to acquire token. HTTP {resp.status_code}: {resp.text}"
         )
 
-    run_fab_command("config set fab_encryption_fallback_enabled true")
-
-    run_fab_command(
-        f"auth login -u {client_id} -p {client_secret} --tenant {tenant_id}",
-        include_secrets=True,
-    )
+    token = resp.json().get("access_token")
+    if not token:
+        raise FabricAuthError("Token response does not contain 'access_token'.")
+    return token
 
 
-def run_fab_command(
-    command,
-    capture_output: bool = False,
-    include_secrets: bool = False,
-    silently_continue: bool = False,
-):
+def fabric_request(method: str, path: str, token: str, **kwargs) -> requests.Response:
     """
-    Executes a Fabric command.
-    Parameters:
-    command (str): The Fabric command to execute.
-    capture_output (bool): If True, captures the command's output. Defaults to False.
-    include_secrets (bool): If True, includes secrets in the debug output. Defaults to False.
-    Returns:
-    str: The output of the command if capture_output is True.
-    Raises:
-    Exception: If there is an error running the Fabric command.
+    Appelle l’API Fabric REST (Core) :
+      - Ajoute automatiquement le header Authorization: Bearer <token>
+      - Lève une exception si le status HTTP n’est pas 2xx
     """
+    url = f"{FABRIC_API_BASE}/{path.lstrip('/')}"
+    headers = kwargs.pop("headers", {})
+    headers["Authorization"] = f"Bearer {token}"
 
-    result = subprocess.run(
-        ["fab", "-c", command], capture_output=capture_output, text=True
-    )
+    # Si on envoie un body, on s’assure du content-type JSON
+    if "json" in kwargs and "Content-Type" not in headers:
+        headers["Content-Type"] = "application/json"
 
-    if not (silently_continue) and (result.returncode > 0 or result.stderr):
-        raise Exception(
-            f"Error running fab command. exit_code: '{result.returncode}'; stderr: '{result.stderr}'"
+    print(f"Calling Fabric API: {method} {url}")
+    resp = requests.request(method, url, headers=headers, **kwargs)
+
+    if not resp.ok:
+        raise FabricApiError(
+            f"{method} {url} failed. "
+            f"HTTP {resp.status_code}: {resp.text}"
         )
 
-    if capture_output:
-
-        output = result.stdout.strip().split("\n")[-1]
-
-        return output
+    return resp
 
 
-def create_workspace(workspace_name, capacity_name: str = "none", upns: list = None):
+def get_or_create_workspace(
+    workspace_name: str,
+    token: str,
+    capacity_id: Optional[str] = None,
+) -> str:
     """
-    Creates a new workspace with the specified name and optional capacity.
-    Additionally, assigns admin roles to the provided user principal names (UPNs).
-    Args:
-        workspace_name (str): The name of the workspace to be created.
-        capacity_name (str, optional): The name of the capacity to assign to the workspace. Defaults to None.
-        upns (list, optional): A list of user principal names to be assigned as admins to the workspace. Defaults to None.
-    Returns:
-        None
+    1. Liste les workspaces (GET /workspaces) :contentReference[oaicite:2]{index=2}
+    2. Si un workspace avec displayName == workspace_name existe -> retourne son id
+    3. Sinon, crée le workspace (POST /workspaces) :contentReference[oaicite:3]{index=3}
     """
+    # 1. List workspaces
+    resp = fabric_request("GET", "workspaces", token)
+    data = resp.json()
 
-    print(f"::group::Creating workspace: {workspace_name}")
+    # Selon la doc Fabric, les collections sont typiquement dans 'value'
+    workspaces = data.get("value", data.get("workspaces", []))
 
-    command = f"create /{workspace_name}.Workspace"
+    for ws in workspaces:
+        if ws.get("displayName") == workspace_name:
+            ws_id = ws.get("id")
+            print(f"Workspace '{workspace_name}' already exists (id={ws_id}).")
+            return ws_id
 
-    if capacity_name:
-        command += f" -P capacityName={capacity_name}"
+    # 2. Create workspace
+    body: Dict[str, object] = {"displayName": workspace_name}
+    if capacity_id:
+        body["capacityId"] = capacity_id
 
-    run_fab_command(command, silently_continue=True)
-
-    if upns is not None:
-
-        upns = [x for x in upns if x.strip()]
-
-        if len(upns) > 0:
-            print(f"Adding UPNs")
-
-            for upn in upns:
-                run_fab_command(
-                    f"acl set -f /{workspace_name}.Workspace -I {upn} -R admin"
-                )
-
-    workspace_id = run_fab_command(
-        f"get /{workspace_name}.Workspace -q id", capture_output=True
-    )
-
-    print(f"::endgroup::")
-
-    return workspace_id
+    print(f"Creating workspace '{workspace_name}'...")
+    resp = fabric_request("POST", "workspaces", token, json=body)
+    ws = resp.json()
+    ws_id = ws["id"]
+    print(f"Workspace created (id={ws_id}).")
+    return ws_id
 
 
-def create_connection(
-    connection_name: str = None, parameters: dict = None, upns: list = None
-):
+def list_items_by_type(
+    workspace_id: str,
+    item_type: str,
+    token: str,
+) -> List[Dict]:
     """
-    Creates a connection with the specified name, parameters, and UPNs.
-    Args:
-        connection_name (str, optional): The name of the connection to create. Defaults to None.
-        parameters (dict, optional): A dictionary of parameters to include in the connection. Defaults to None.
-        upns (list, optional): A list of UPNs to add to the connection with admin rights. Defaults to None.
-    Returns:
-        str: The ID of the created connection.
+    Liste les items d’un workspace filtrés par type (Report, SemanticModel, ...) :contentReference[oaicite:4]{index=4}
+      GET /workspaces/{workspaceId}/items?type={item_type}
     """
-
-    print(f"::group::Creating connection {connection_name}")
-
-    if parameters:
-        param_str = ",".join(f"{key}={value}" for key, value in parameters.items())
-        param_str = f"-P {param_str}"
-    else:
-        param_str = ""
-
-    run_fab_command(
-        f"create .connections/{connection_name}.Connection {param_str}",
-        silently_continue=True,
-    )
-
-    connection_id = run_fab_command(
-        f"get .connections/{connection_name}.Connection -q id", capture_output=True
-    )
-
-    if upns is not None:
-
-        upns = [x for x in upns if x.strip()]
-
-        if len(upns) > 0:
-            print(f"Adding UPNs to item {connection_name}")
-
-            for upn in upns:
-                run_fab_command(
-                    f"acl set -f .connections/{connection_name}.Connection -I {upn} -R admin"
-                )
-
-    print(f"::endgroup::")
-
-    return connection_id
+    path = f"workspaces/{workspace_id}/items?type={item_type}"
+    resp = fabric_request("GET", path, token)
+    data = resp.json()
+    return data.get("value", data.get("items", []))
 
 
-def create_item(
-    workspace_name: str = None,
-    item_type: str = None,
-    item_name: str = None,
-    parameters: dict = None,
-):
+def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
     """
-    Creates an item in the specified workspace.
-    Args:
-        workspace_name (str, optional): The name of the workspace where the item will be created.
-        item_type (str, optional): The type of the item to be created.
-        item_name (str, optional): The name of the item to be created.
-        parameters (dict, optional): A dictionary of parameters to be passed during item creation.
-    Returns:
-        str: The ID of the created item.
+    Construit la liste des 'parts' pour un Item Definition à partir d'un dossier PBIP :
+      - parcourt tous les fichiers (definition/, StaticResources/, .platform, etc.)
+      - crée un part par fichier:
+          path       = chemin relatif (style 'definition/report.json')
+          payload    = fichier encodé en base64
+          payloadType= InlineBase64 (unique valeur supportée) :contentReference[oaicite:5]{index=5}
     """
+    parts: List[Dict[str, str]] = []
 
-    print(f"::group::Creating item {workspace_name}/{item_name}.{item_type}")
+    for root, _, files in os.walk(folder):
+        for filename in files:
+            full_path = os.path.join(root, filename)
+            rel_path = os.path.relpath(full_path, folder).replace("\\", "/")
 
-    if parameters:
-        param_str = ",".join(f"{key}={value}" for key, value in parameters.items())
-        param_str = f"-P {param_str}"
-    else:
-        param_str = ""
+            with open(full_path, "rb") as f:
+                content = f.read()
 
-    run_fab_command(
-        f"create /{workspace_name}.workspace/{item_name}.{item_type} {param_str}",
-        silently_continue=True,
-    )
+            b64 = base64.b64encode(content).decode("ascii")
+            parts.append(
+                {
+                    "path": rel_path,
+                    "payload": b64,
+                    "payloadType": "InlineBase64",
+                }
+            )
 
-    item_id = run_fab_command(
-        f"get /{workspace_name}.workspace/{item_name}.{item_type} -q id",
-        capture_output=True,
-    )
+    if not parts:
+        raise ValueError(f"No files found in PBIP folder: {folder}")
 
-    print(f"::endgroup::")
-
-    return item_id
+    return parts
 
 
-def deploy_item(
-    src_path,
-    workspace_name,
-    item_type: str = None,
-    item_name: str = None,
-    find_and_replace: dict = None,
-    what_if: bool = False,
-    func_after_staging=None,
-):
-    """
-    Deploys an item to a specified workspace.
-    Args:
-        src_path (str): The source path of the item to be deployed.
-        workspace_name (str): The name of the workspace where the item will be deployed.
-        item_type (str, optional): The type of the item. If not provided, it will be inferred from the platform data.
-        item_name (str, optional): The name of the item. If not provided, it will be inferred from the platform data.
-        find_and_replace (dict, optional): A dictionary where keys are tuples containing a file filter regex and a find regex,
-                                           and values are the replacement strings. This will be used to perform find and replace
-                                           operations on the files in the staging path.
-        what_if (bool, optional): If True, the deployment will be simulated but not actually performed. Defaults to False.
-        func_after_staging (callable, optional): A function to be called after the item is copied to the staging path. It should
-                                                 accept the staging path as its only argument.
-    Returns:
-        str: The ID of the deployed item if `what_if` is False. Otherwise, returns None.
-    """
+def create_or_update_item_from_folder(
+    workspace_id: str,
+    folder: str,
+    item_type: str,
+    token: str,
+) -> str:
+    display_name = os.path.basename(folder)
+    if "." in display_name:
+        display_name = display_name.split(".", 1)[0]
 
-    print(f"::group::Deploying {src_path}")
+    print(f"\n=== Publishing {item_type} from folder: {folder}")
+    print(f"Item displayName = {display_name}")
 
-    staging_path = copy_to_staging(src_path)
+    parts = build_definition_parts_from_folder(folder)
+    definition = {"parts": parts}
 
-    # Call function that provides flexibility to change something in the staging files
+    # Check if exists
+    existing_items = list_items_by_type(workspace_id, item_type, token)
+    item_id = None
+    for it in existing_items:
+        if it.get("displayName") == display_name:
+            item_id = it["id"]
+            break
 
-    if func_after_staging:
-        func_after_staging(staging_path)
+    # -------------------------
+    # CASE 1 : CREATE
+    # -------------------------
+    if item_id is None:
+        body = {
+            "displayName": display_name,
+            "type": item_type,
+            "definition": definition,
+        }
 
-    if os.path.exists(os.path.join(staging_path, ".platform")):
-
-        with open(os.path.join(staging_path, ".platform"), "r") as file:
-            platform_data = json.load(file)
-
-        if item_name is None:
-            item_name = platform_data["metadata"]["displayName"]
-
-        if item_type is None:
-            item_type = platform_data["metadata"]["type"]
-
-    # Loop through all files and apply the find & replace with regular expressions
-
-    if find_and_replace:
-
-        for root, _, files in os.walk(staging_path):
-            for file in files:
-
-                file_path = os.path.join(root, file)
-
-                with open(file_path, "r") as file:
-                    text = file.read()
-
-                # Loop parameters and execute the find & replace in the ones that match the file path
-
-                for key, replace_value in find_and_replace.items():
-
-                    find_and_replace_file_filter = key[0]
-
-                    find_and_replace_file_find = key[1]
-
-                    if re.search(find_and_replace_file_filter, file_path):
-                        text, count_subs = re.subn(
-                            find_and_replace_file_find, replace_value, text
-                        )
-
-                        if count_subs > 0:
-
-                            print(
-                                f"Find & replace in file '{file_path}' with regex '{find_and_replace_file_find}'"
-                            )
-
-                            with open(file_path, "w") as file:
-                                file.write(text)
-
-    if not what_if:
-        run_fab_command(
-            f"import -f /{workspace_name}.workspace/{item_name}.{item_type} -i {staging_path}"
+        resp = fabric_request(
+            "POST",
+            f"workspaces/{workspace_id}/items",
+            token,
+            json=body,
         )
 
-        # Return id after deployment
+        # Try parsing JSON
+        try:
+            item = resp.json()
+        except Exception:
+            item = None
 
-        item_id = run_fab_command(
-            f"get /{workspace_name}.workspace/{item_name}.{item_type} -q id",
-            capture_output=True,
-        )
+        if not item or "id" not in item:
+            print("\n❌ FABRIC DID NOT RETURN A VALID ITEM ON CREATION")
+            print("Raw response:")
+            print(resp.text)
+            raise FabricApiError(
+                f"Fabric failed to create {item_type} '{display_name}'."
+            )
 
+        item_id = item["id"]
+        print(f"✅ Created {item_type} '{display_name}' (id={item_id})")
         return item_id
 
-    print(f"::endgroup::")
+    # -------------------------
+    # CASE 2 : UPDATE
+    # -------------------------
+    body = {"definition": definition}
 
-
-def copy_to_staging(path):
-    """
-    Copies the contents of the specified directory to a staging folder.
-    This function ensures that a staging folder exists, and if it already exists,
-    it removes the existing staging folder and creates a new one. It then copies
-    all files and directories from the specified path to the staging folder.
-    Args:
-        path (str): The path of the directory to be copied to the staging folder.
-    Returns:
-        str: The path to the staging folder where the contents have been copied.
-    """
-
-    # ensure staging folder exists
-
-    current_folder = os.path.dirname(__file__)
-    
-    path_staging = os.path.join(current_folder, "_stg", os.path.basename(path))
-
-    if os.path.exists(path_staging):
-        shutil.rmtree(path_staging)
-
-    os.makedirs(path_staging)
-
-    # copy files to staging folder
-
-    shutil.copytree(
-        path, path_staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.abf")
+    resp = fabric_request(
+        "POST",
+        f"workspaces/{workspace_id}/items/{item_id}/updateDefinition?updateMetadata=false",
+        token,
+        json=body,
     )
 
-    return path_staging
+    # patch : check update response too
+    try:
+        result = resp.json()
+    except Exception:
+        result = None
+
+    if result is None:
+        print("\n⚠️ WARNING: Fabric returned NO JSON for update.")
+        print("Raw response:")
+        print(resp.text)
+        print("Continuing anyway...")
+
+    print(f"🔄 Updated {item_type} '{display_name}' (id={item_id})")
+    return item_id

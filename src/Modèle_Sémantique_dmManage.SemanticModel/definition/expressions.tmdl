@@ -1,0 +1,5 @@
+expression ConnexionString = "wubftvowp6qenm6447d2go4daa-7nk24tlwmfieti3lyp2svkqdl4.datawarehouse.fabric.microsoft.com" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 3504fea9-0696-4ca9-99c3-1f5879b33850
+
+	annotation PBI_ResultType = Text
+
