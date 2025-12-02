@@ -1,0 +1,101 @@
+table D_Clients
+	lineageTag: 086dbac3-a6a1-4cbe-b4fb-c8d4e86ad8b9
+
+	column ID_D_Client
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 6b4b3a16-62fc-4ae6-8831-959c4b91fc82
+		summarizeBy: none
+		sourceColumn: ID_D_Client
+
+		annotation SummarizationSetBy = Automatic
+
+	column Civilite
+		dataType: string
+		lineageTag: eea7636c-0cab-4a5a-9e58-3f2e82a97c50
+		summarizeBy: none
+		sourceColumn: Civilite
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Manager Principal'
+		dataType: string
+		lineageTag: e28b6191-8b18-450f-aa1f-ce3def0f3379
+		summarizeBy: none
+		sourceColumn: Manager Principal
+
+		annotation SummarizationSetBy = Automatic
+
+	column Agence
+		dataType: string
+		lineageTag: 1f9f109c-84fb-49c5-a3a0-1bf4b485279b
+		summarizeBy: none
+		sourceColumn: Agence
+
+		annotation SummarizationSetBy = Automatic
+
+	column Pole
+		dataType: string
+		lineageTag: 318f397b-92c3-4418-b334-8e61ebf7c6e6
+		summarizeBy: none
+		sourceColumn: Pole
+
+		annotation SummarizationSetBy = Automatic
+
+	column Entreprise
+		dataType: string
+		lineageTag: 2de8b5d4-dbbc-491a-884a-46cae56d02fc
+		summarizeBy: none
+		sourceColumn: Entreprise
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Business Developper'
+		dataType: string
+		lineageTag: fbdf78d4-e77a-42dd-8e9d-6910ca421beb
+		summarizeBy: none
+		sourceColumn: Business Developper
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Version Actuelle'
+		dataType: string
+		isHidden
+		lineageTag: 2f382468-30ce-4c9e-8b24-24ae4b394629
+		summarizeBy: none
+		sourceColumn: Version Actuelle
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Nom Complet'
+		dataType: string
+		lineageTag: d6655e30-8d5f-4785-b7b5-99d999c4c74e
+		summarizeBy: none
+		sourceColumn: Nom Complet
+
+		annotation SummarizationSetBy = Automatic
+
+	column UrlImageEntreprise
+		dataType: string
+		isHidden
+		lineageTag: aa8c81ac-4046-46ae-b56c-87894d4c63f4
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: UrlImageEntreprise
+
+		annotation SummarizationSetBy = Automatic
+
+	partition D_Clients = m
+		mode: import
+		source =
+				let
+				    Source = Sql.Database(ConnexionString, "GoldWarehouse"),
+				    dmDtrManage_D_Clients = Source{[Schema="dmDtrManage",Item="D_Clients"]}[Data]
+				in
+				    dmDtrManage_D_Clients
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
