@@ -1,169 +1,79 @@
-import os
-import time
 import argparse
 import glob
-from utils import *
+import os
 
-parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--spn-auth", action="store_true", default=True)
-parser.add_argument("--workspace", default="SalesSense")
-parser.add_argument("--admin-upns", default=os.getenv("FABRIC_ADMIN_UPNS"))
-parser.add_argument(
-    "--capacity", default=os.getenv("FABRIC_CAPACITY")
+from utils import (
+    get_access_token_spn,
+    get_or_create_workspace,
+    create_or_update_item_from_folder,
 )
 
-args = parser.parse_args()
 
-spn_auth = args.spn_auth
-capacity_name = args.capacity
-workspace_name = args.workspace
-admin_upns = args.admin_upns
-
-if admin_upns:
-    admin_upns = [upn.strip() for upn in admin_upns.split(",")]
-
-lakehouse_name = "LH_STORE_RAW"
-connection_name = "SalesSense - DEV"
-connection_source_url = "https://raw.githubusercontent.com/pbi-tools/sales-sample/refs/heads/data/RAW-Sales.csv"
-
-# Authenticate
-
-if spn_auth:
-    fab_authenticate_spn()
-
-# Create Fabric connection to use in data pipeline
-
-connection_id = create_connection(    
-    connection_name=connection_name,
-    parameters={
-        "connectionDetails.type": "HttpServer",
-        "connectionDetails.parameters.url": connection_source_url,
-        "credentialDetails.type": "Anonymous",
-    }    
-)
-
-# Create workspace
-
-workspace_id = create_workspace(workspace_name, capacity_name, upns=admin_upns)
-
-# Create lakehouse
-
-lakehouse_id = create_item(
-    workspace_name=workspace_name,
-    item_type="lakehouse",
-    item_name=lakehouse_name,
-    parameters={"enableSchemas": "true"},
-)
-
-# Deploy data pipeline binded to the connection and workspace
-
-deploy_item(
-    "src/DP_INGST_CopyCSV.DataPipeline",
-    workspace_name=workspace_name,
-    find_and_replace={
-        (
-            r"pipeline-content.json",
-            r'("workspaceId"\s*:\s*)".*"',
-        ): rf'\1"{workspace_id}"',
-        (
-            r"pipeline-content.json",
-            r'("artifactId"\s*:\s*)".*"',
-        ): rf'\1"{lakehouse_id}"',
-        (
-            r"pipeline-content.json",
-            r'("connection"\s*:\s*)".*"',
-        ): rf'\1"{connection_id}"',
-    },    
-)
-
-# Deploy notebook
-
-deploy_item(
-    "src/NB_TRNSF_Raw.Notebook",
-    workspace_name=workspace_name,
-    find_and_replace={
-        (
-            r"notebook-content.ipynb",
-            r'("default_lakehouse"\s*:\s*)".*"',
-        ): rf'\1"{lakehouse_id}"',
-        (
-            r"notebook-content.ipynb",
-            r'("default_lakehouse_name"\s*:\s*)".*"',
-        ): rf'\1"{lakehouse_name}"',
-        (
-            r"notebook-content.ipynb",
-            r'("default_lakehouse_workspace_id"\s*:\s*)".*"',
-        ): rf'\1"{workspace_id}"',
-        (
-            r"notebook-content.ipynb",
-            r'("known_lakehouses"\s*:\s*)\[[\s\S]*?\]',
-        ): rf'\1[{{"id": "{lakehouse_id}"}}]',
-    },
-)
-
-# Get SQL endpoint - its created asynchronously so we need to wait for it to be available
-
-sql_endpoint = None
-
-for attempt in range(3):
-
-    sql_endpoint = run_fab_command(
-        f"get /{workspace_name}.workspace/{lakehouse_name}.lakehouse -q properties.sqlEndpointProperties.connectionString",
-        capture_output=True,
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Deploy PBIP Report & SemanticModel to DEV workspace using Fabric REST APIs."
+    )
+    parser.add_argument(
+        "--workspace",
+        required=True,
+        help="Fabric workspace name (DEV)",
+    )
+    parser.add_argument(
+        "--capacity",
+        default="",
+        help="(Optional) Capacity ID to assign the workspace to.",
+    )
+    parser.add_argument(
+        "--admin-upns",
+        default="",
+        help="(Unused for now) Admin UPNs – kept for compatibility.",
     )
 
-    if sql_endpoint != None and sql_endpoint != "":
-        break
+    args = parser.parse_args()
 
-    print("Waiting for SQL endpoint...")
+    print("=== 🚀 DEPLOY TO DEV ===")
 
-    time.sleep(30)
+    # 1. Auth SPN -> token
+    print("Authenticating with Service Principal (client_credentials)...")
+    token = get_access_token_spn()
+    print("✅ SPN authentication successful.")
 
-if sql_endpoint == None or sql_endpoint == "" or sql_endpoint == "None":
-    raise Exception(f"Cannot resolve SQL endpoint for lakehouse {lakehouse_name}")
+    # 2. Workspace DEV
+    ws_id = get_or_create_workspace(
+        workspace_name=args.workspace,
+        token=token,
+        capacity_id=args.capacity or None,
+    )
+    print(f"Using workspace '{args.workspace}' (id={ws_id})")
 
-# Deploy semantic model
-
-semanticmodel_id = deploy_item(
-    "src/SM_SalesSense.SemanticModel",
-    workspace_name=workspace_name,
-    find_and_replace={
-        (
-            r"expressions.tmdl",
-            r'(expression\s+Server\s*=\s*)".*?"',
-        ): rf'\1"{sql_endpoint}"'
-    },
-)
-
-# Deploy reports
-
-for report_path in glob.glob("src/*.Report"):
-
-    deploy_item(
-        report_path,
-        workspace_name=workspace_name,
-        find_and_replace={
-            ("definition.pbir", r"\{[\s\S]*\}"): json.dumps(
-                {
-                    "version": "4.0",
-                    "datasetReference": {
-                        "byConnection": {
-                            "connectionString": None,
-                            "pbiServiceModelId": None,
-                            "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-                            "pbiModelDatabaseName": semanticmodel_id,
-                            "name": "EntityDataSource",
-                            "connectionType": "pbiServiceXmlaStyleLive",
-                        }
-                    },
-                }
+    # 3. Deploy Semantic Models (*.SemanticModel in src/)
+    semantic_folders = glob.glob(os.path.join("src", "*.SemanticModel"))
+    if not semantic_folders:
+        print("No *.SemanticModel folders found under src/ – skipping semantic models.")
+    else:
+        for folder in semantic_folders:
+            create_or_update_item_from_folder(
+                workspace_id=ws_id,
+                folder=folder,
+                item_type="SemanticModel",
+                token=token,
             )
-        },
-    )
 
-run_fab_command(f"open {workspace_name}.workspace")
+    # 4. Deploy Reports (*.Report in src/)
+    report_folders = glob.glob(os.path.join("src", "*.Report"))
+    if not report_folders:
+        print("No *.Report folders found under src/ – skipping reports.")
+    else:
+        for folder in report_folders:
+            create_or_update_item_from_folder(
+                workspace_id=ws_id,
+                folder=folder,
+                item_type="Report",
+                token=token,
+            )
 
-# Log out in case of auth with SPN
+    print("\n🎉 DEV deployment finished successfully.")
 
-if spn_auth:
-    run_fab_command("auth logout")
+
+if __name__ == "__main__":
+    main()
