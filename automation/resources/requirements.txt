@@ -1,5 +1,0 @@
-requests
-ms-fabric-cli
-azure-identity
-ruamel.yaml
-fabric-cicd
