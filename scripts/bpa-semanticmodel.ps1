@@ -47,7 +47,7 @@ if ($src) {
     $itemsFolders = Get-ChildItem  -Path $src -recurse -include ("*.pbidataset", "*.pbism")
 
     foreach ($itemFolder in $itemsFolders) {
-        $itemPath = "$($itemFolder.Directory.FullName)\definition"
+        $itemPath = "$($itemFolder.Directory.FullName)\definition\"
 
         if (!(Test-Path $itemPath)) {
             $itemPath = "$($itemFolder.Directory.FullName)\model.bim"
