@@ -3,6 +3,7 @@ import sys
 import base64
 import json
 from typing import List, Dict, Optional
+import time
 
 import requests
 
@@ -211,19 +212,38 @@ def create_or_update_item_from_folder(
             json=body,
         )
 
+        # Check if item is in creation with status code 201 
+        try:
+            statcode = resp.status_code
+        except Exception:
+            statuscode = None
+
+        print(statuscode)
+        if statuscode == 202:
+            print ("Waiting for creation to complete")
+            item_id = None
+            while item_id == None:
+                existing_items = list_items_by_type(workspace_id, item_type, token)
+                for it in existing_items:
+                    if it.get("displayName") == display_name:
+                        item_id = it["id"]
+                        break
+                time.sleep(20)
+            print(f"Successfully created item {item_id}")
+
         # Try parsing JSON
         try:
             item = resp.json()
         except Exception:
             item = None
 
-        # if not item or "id" not in item:
-        #     print("\n❌ FABRIC DID NOT RETURN A VALID ITEM ON CREATION")
-        #     print("Raw response:")
-        #     print(resp.text)
-        #     raise FabricApiError(
-        #         f"Fabric failed to create {item_type} '{display_name}'."
-        #     )
+        if not item or "id" not in item:
+            print("\n❌ FABRIC DID NOT RETURN A VALID ITEM ON CREATION")
+            print("Raw response:")
+            print(resp.text)
+            raise FabricApiError(
+                f"Fabric failed to create {item_type} '{display_name}'."
+            )
 
         item_id = item["id"]
         print(f"✅ Created {item_type} '{display_name}' (id={item_id})")
