@@ -241,7 +241,7 @@ def create_or_update_item_from_folder(
         json=body,
     )
 
-    print(resp)
+    # print(resp) : uncomment to check for response
     # patch : check update response too
     try:
         result = resp.json()
