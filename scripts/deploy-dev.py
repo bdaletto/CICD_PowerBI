@@ -31,12 +31,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    print("=== 🚀 DEPLOY TO DEV ===")
+    print("=== DEPLOY TO DEV ===")
 
     # 1. Auth SPN -> token
     print("Authenticating with Service Principal (client_credentials)...")
     token = get_access_token_spn()
-    print("✅ SPN authentication successful.")
+    print("SPN authentication successful.")
 
     # 2. Workspace DEV
     ws_id = get_or_create_workspace(
@@ -72,7 +72,7 @@ def main() -> None:
                 token=token,
             )
 
-    print("\n🎉 DEV deployment finished successfully.")
+    print("\nDEV deployment finished successfully.")
 
 
 if __name__ == "__main__":
