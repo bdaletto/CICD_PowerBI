@@ -93,11 +93,11 @@ jobs:
               --capacity "$FABRIC_CAPACITY" \
               --admin-upns "$FABRIC_ADMIN_UPNS"
           else
-            echo "🚀 Deploying to PROD workspace..."
+            echo " Deploying to PROD workspace..."
             python scripts/deploy-prd.py \
               --workspace "$FABRIC_WORKSPACE" \
               --capacity "$FABRIC_CAPACITY" \
               --admin-upns "$FABRIC_ADMIN_UPNS"
           fi
 
-          echo "🎉 Fabric deployment finished."
+          echo " Fabric deployment finished."

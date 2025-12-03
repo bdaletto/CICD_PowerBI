@@ -3,6 +3,10 @@ import shutil
 import subprocess
 import re
 import json
+import sys
+import base64
+from typing import List, Dict, Optional
+import requests
 
 def fab_authenticate_spn(
     client_id: str = None, client_secret: str = None, tenant_id: str = None
