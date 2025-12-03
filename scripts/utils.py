@@ -217,13 +217,13 @@ def create_or_update_item_from_folder(
         except Exception:
             item = None
 
-        if not item or "id" not in item:
-            print("\n❌ FABRIC DID NOT RETURN A VALID ITEM ON CREATION")
-            print("Raw response:")
-            print(resp.text)
-            raise FabricApiError(
-                f"Fabric failed to create {item_type} '{display_name}'."
-            )
+        # if not item or "id" not in item:
+        #     print("\n❌ FABRIC DID NOT RETURN A VALID ITEM ON CREATION")
+        #     print("Raw response:")
+        #     print(resp.text)
+        #     raise FabricApiError(
+        #         f"Fabric failed to create {item_type} '{display_name}'."
+        #     )
 
         item_id = item["id"]
         print(f"✅ Created {item_type} '{display_name}' (id={item_id})")
