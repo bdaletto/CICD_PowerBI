@@ -214,7 +214,7 @@ def create_or_update_item_from_folder(
 
         # Check if item is in creation with status code 201 
         try:
-            statcode = resp.status_code
+            statuscode = resp.status_code
         except Exception:
             statuscode = None
 
