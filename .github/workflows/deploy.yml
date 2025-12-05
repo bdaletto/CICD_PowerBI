@@ -86,7 +86,7 @@ jobs:
 
           if [ "$FABRIC_ENV" = "dev" ]; then
             echo "Deploying to DEV workspace..."
-            python scripts/alt-deploy-dev.py \
+            python scripts/deploy-dev.py \
               --workspace "$FABRIC_WORKSPACE" \
               --capacity "$FABRIC_CAPACITY" \
               --admin-upns "$FABRIC_ADMIN_UPNS"
