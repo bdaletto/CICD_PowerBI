@@ -54,7 +54,7 @@ def main() -> None:
     target_workspace = FabricWorkspace(
         workspace_id = ws_id,
         #environment = "DEV",
-        repository_directory = "*/src",
+        repository_directory = "**/src",
         item_type_in_scope = ["Report", "SemanticModel"],
     )
 
