@@ -1,0 +1,140 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "cc1c40610010e6077ba4",
+  "position": {
+    "x": 9.4488915545918015,
+    "y": 0,
+    "z": 0,
+    "height": 720.00553645989532,
+    "width": 1269.9310249371383,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Table 1"
+                    }
+                  },
+                  "Property": "Pays ou territoire"
+                }
+              },
+              "queryRef": "Table 1.Pays ou territoire",
+              "nativeQueryRef": "Pays ou territoire"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Table 1"
+                    }
+                  },
+                  "Property": "Population au 1er juillet 2023"
+                }
+              },
+              "queryRef": "Table 1.Population au 1er juillet 2023",
+              "nativeQueryRef": "Population au 1er juillet 2023"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Table 1"
+                    }
+                  },
+                  "Property": "Rang (2023)"
+                }
+              },
+              "queryRef": "Table 1.Rang (2023)",
+              "nativeQueryRef": "Rang (2023)"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Table 1"
+                    }
+                  },
+                  "Property": "Population projetée au 1er janvier 2026"
+                }
+              },
+              "queryRef": "Table 1.Population projetée au 1er janvier 2026",
+              "nativeQueryRef": "Population projetée au 1er janvier 2026"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "21342d030b6206c60789",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Table 1"
+              }
+            },
+            "Property": "Pays ou territoire"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "e996562c058400082bec",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Table 1"
+              }
+            },
+            "Property": "Population au 1er juillet 2023"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "1a9a3807353e5ed24cc0",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Table 1"
+              }
+            },
+            "Property": "Rang (2023)"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "d8a82b509951e6aeca18",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Table 1"
+              }
+            },
+            "Property": "Population projetée au 1er janvier 2026"
+          }
+        },
+        "type": "Categorical"
+      }
+    ]
+  }
+}
