@@ -218,6 +218,8 @@ def create_or_update_item_from_folder(
         except Exception:
             statuscode = None
 
+        print(f"headers extracted from fabric resp :{resp.headers}")
+
         print(statuscode)
         if resp.status_code == 202:
             print("⏳ Création en cours (async)...")
