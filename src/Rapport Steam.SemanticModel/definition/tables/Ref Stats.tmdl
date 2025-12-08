@@ -1,0 +1,58 @@
+table 'Ref Stats'
+	lineageTag: f42fb23e-d6cd-4d9a-a67f-9866d08bfdad
+
+	column ID
+		dataType: string
+		lineageTag: 46688592-1b8f-48a1-a9d0-0ef3576355bb
+		summarizeBy: none
+		sourceColumn: ID
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column 'Weapons Ref.Url Image'
+		dataType: string
+		lineageTag: 9670591d-b8af-414f-8a40-726826448c14
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: Weapons Ref.Url Image
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column 'Weapons Ref.Weapon Category'
+		dataType: string
+		lineageTag: cd1023de-3591-481b-9fc8-39a1be7eb47e
+		summarizeBy: none
+		sourceColumn: Weapons Ref.Weapon Category
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Ref Stats-1f808ef9-caad-41a2-9f60-1708d866e648' = m
+		mode: import
+		source =
+				let
+				    Source = Json.Document(Web.Contents("http://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=3D71B244A257FE79DA02720E4AC449E2&appid=582010")),
+				    game = Source[game],
+				    availableGameStats = game[availableGameStats],
+				    stats = availableGameStats[stats],
+				    #"Converti en table" = Table.FromList(stats, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+				    #"Column1 développé" = Table.ExpandRecordColumn(#"Converti en table", "Column1", {"name", "defaultvalue", "displayName"}, {"name", "defaultvalue", "displayName"}),
+				    #"Lignes filtrées" = Table.SelectRows(#"Column1 développé", each Text.Contains([name], "Weapon")),
+				    #"Requêtes fusionnées3" = Table.NestedJoin(#"Lignes filtrées", {"name"}, #"Weapons Ref", {"ID Stats"}, "Weapons Ref", JoinKind.LeftOuter),
+				    #"Weapons Ref développé" = Table.ExpandTableColumn(#"Requêtes fusionnées3", "Weapons Ref", {"Url Image", "Weapon Category"}, {"Weapons Ref.Url Image", "Weapons Ref.Weapon Category"}),
+				    #"Colonnes renommées" = Table.RenameColumns(#"Weapons Ref développé",{{"name", "ID"}}),
+				    #"Colonnes supprimées" = Table.RemoveColumns(#"Colonnes renommées",{"defaultvalue", "displayName"})
+				in
+				    #"Colonnes supprimées"
+
+	annotation PBI_QueryRelationships = {"columnCount":3,"keyColumnNames":[],"queryRelationships":[{"keyColumnCount":1,"keyColumn":0,"otherKeyColumnIdentity":"Section1/Weapons Ref/Source.{ID Stats,2}","KeyColumnCount":1}],"columnIdentities":["Section1/Ref Stats/Column1 développé.{name,0}","Section1/Weapons Ref/Type modifié.{Url Image,0}","Section1/Weapons Ref/Type modifié.{Weapon Category,1}"],"ColumnCount":3,"KeyColumnNames":[],"ColumnIdentities":["Section1/Ref Stats/Column1 développé.{name,0}","Section1/Weapons Ref/Type modifié.{Url Image,0}","Section1/Weapons Ref/Type modifié.{Weapon Category,1}"],"RelationshipInfo":[{"keyColumnCount":1,"keyColumn":0,"otherKeyColumnIdentity":"Section1/Weapons Ref/Source.{ID Stats,2}","KeyColumnCount":1}]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

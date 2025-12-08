@@ -1,0 +1,412 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/bookmark/1.4.0/schema.json",
+  "displayName": "Ben",
+  "name": "Bookmark96ec986167d438dac3c8",
+  "options": {
+    "targetVisualNames": []
+  },
+  "explorationState": {
+    "version": "1.3",
+    "activeSection": "ReportSectionb8efd3c2047a7e60ceec",
+    "sections": {
+      "ReportSectionb8efd3c2047a7e60ceec": {
+        "filters": {
+          "byExpr": [
+            {
+              "name": "Filter",
+              "type": "Categorical",
+              "filter": {
+                "Version": 2,
+                "From": [
+                  {
+                    "Name": "l",
+                    "Entity": "List Achievements",
+                    "Type": 0
+                  }
+                ],
+                "Where": [
+                  {
+                    "Condition": {
+                      "In": {
+                        "Expressions": [
+                          {
+                            "Column": {
+                              "Expression": {
+                                "SourceRef": {
+                                  "Source": "l"
+                                }
+                              },
+                              "Property": "Name"
+                            }
+                          }
+                        ],
+                        "Values": [
+                          [
+                            {
+                              "Literal": {
+                                "Value": "'Ben'"
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "expression": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "List Achievements"
+                    }
+                  },
+                  "Property": "Name"
+                }
+              },
+              "howCreated": 1
+            }
+          ]
+        },
+        "visualContainers": {
+          "6b166e876a8ca6511504": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "eaebbef7d44876a45d33",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Obtained Rarest achievement rate"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {},
+              "orderBy": [
+                {
+                  "Direction": 2,
+                  "Expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "List Achievements"
+                        }
+                      },
+                      "Property": "Least obtained achievement rate"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "338c78cdd97168163e42": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "0a4c68a9e13c3a806a0a",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "List Achievements"
+                        }
+                      },
+                      "Property": "Last Achievement Unlock Max Date"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {},
+              "orderBy": [
+                {
+                  "Direction": 1,
+                  "Expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "List Achievements"
+                        }
+                      },
+                      "Property": "Last Achievement Unlock Max Date"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "59312bc17c819054a270": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "66e1f6514e9d73714470",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "News Last Achievement Obtained"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {}
+            }
+          },
+          "6987e32e4cb303c29d62": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "9e9a29940302c93048de",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "News Last Achievement Pic"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "multiRowCard",
+              "objects": {}
+            }
+          },
+          "318d55d9394c00c24e0b": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "a7fcb26164a5b60108bd",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "Ben Achievements"
+                        }
+                      },
+                      "Property": "Hours played last 2 weeks"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {}
+            }
+          },
+          "257ec193eedbc5736811": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "8d931d3521079958a38c",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Best Achievement obtained"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {}
+            }
+          },
+          "c4654ab12ed04ba3a175": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "b224cff13ce5c8752600",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Best Achievement obtained Pic"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "multiRowCard",
+              "objects": {}
+            }
+          },
+          "7d06bc451b90ae650300": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "7b3fbdc3c0b362aa0be9",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Unobtained most common achievement rate"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {},
+              "orderBy": [
+                {
+                  "Direction": 2,
+                  "Expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Unobtained most common achievement rate"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "c08ba63062891a7732aa": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "89dfb541812b03627b80",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Worst Achievement not obtained"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "card",
+              "objects": {}
+            }
+          },
+          "e32fea3067e4314d00b7": {
+            "filters": {
+              "byExpr": [
+                {
+                  "name": "a86b5dfc82c000867336",
+                  "type": "Advanced",
+                  "expression": {
+                    "Measure": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "achievement"
+                        }
+                      },
+                      "Property": "Worst Achievement not obtained pic"
+                    }
+                  },
+                  "howCreated": 0
+                }
+              ]
+            },
+            "singleVisual": {
+              "visualType": "multiRowCard",
+              "objects": {}
+            }
+          },
+          "9f6cdef4c18e0e90e882": {
+            "singleVisual": {
+              "visualType": "textbox",
+              "objects": {}
+            }
+          },
+          "dd58fe07a338e2400b58": {
+            "singleVisual": {
+              "visualType": "textbox",
+              "objects": {}
+            }
+          },
+          "accd5307ac680665d9d4": {
+            "singleVisual": {
+              "visualType": "textbox",
+              "objects": {}
+            }
+          },
+          "572412ccd8ecad666704": {
+            "singleVisual": {
+              "visualType": "image",
+              "objects": {}
+            }
+          }
+        }
+      }
+    },
+    "objects": {
+      "merge": {
+        "outspacePane": [
+          {
+            "properties": {
+              "expanded": {
+                "expr": {
+                  "Literal": {
+                    "Value": "true"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
