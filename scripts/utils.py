@@ -2,8 +2,10 @@ import os
 import sys
 import base64
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
+from pathlib import Path
 import time
+import spark
 
 import requests
 
@@ -137,7 +139,7 @@ def list_items_by_type(
     return data.get("value", data.get("items", []))
 
 
-def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
+def build_definition_parts_from_folder(folder: Union[str, Path]) -> List[Dict[str, str]]:
     """
     Construit la liste des 'parts' pour un Item Definition à partir d'un dossier PBIP :
       - parcourt tous les fichiers (definition/, StaticResources/, .platform, etc.)
@@ -146,12 +148,14 @@ def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
           payload    = fichier encodé en base64
           payloadType= InlineBase64 (unique valeur supportée) :contentReference[oaicite:5]{index=5}
     """
+    # Convert Path to string if needed
+    folder_str = str(folder) if isinstance(folder, Path) else folder
     parts: List[Dict[str, str]] = []
 
-    for root, _, files in os.walk(folder):
+    for root, _, files in os.walk(folder_str):
         for filename in files:
             full_path = os.path.join(root, filename)
-            rel_path = os.path.relpath(full_path, folder).replace("\\", "/")
+            rel_path = os.path.relpath(full_path, folder_str).replace("\\", "/")
 
             with open(full_path, "rb") as f:
                 content = f.read()
@@ -166,25 +170,27 @@ def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
             )
 
     if not parts:
-        raise ValueError(f"No files found in PBIP folder: {folder}")
+        raise ValueError(f"No files found in PBIP folder: {folder_str}")
 
     return parts
 
 
 def create_or_update_item_from_folder(
     workspace_id: str,
-    folder: str,
+    folder: Union[str, Path],
     item_type: str,
     token: str,
 ) -> str:
-    display_name = os.path.basename(folder)
+    # Convert Path to string if needed
+    folder_str = str(folder) if isinstance(folder, Path) else folder
+    display_name = os.path.basename(folder_str)
     if "." in display_name:
         display_name = display_name.split(".", 1)[0]
 
-    print(f"\n=== Publishing {item_type} from folder: {folder}")
+    print(f"\n=== Publishing {item_type} from folder: {folder_str}")
     print(f"Item displayName = {display_name}")
 
-    parts = build_definition_parts_from_folder(folder)
+    parts = build_definition_parts_from_folder(folder_str)
     definition = {"parts": parts}
 
     # Check if exists
