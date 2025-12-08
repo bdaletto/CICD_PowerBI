@@ -2,6 +2,8 @@ import os
 import sys
 import base64
 import json
+import zipfile
+import tempfile
 from typing import List, Dict, Optional
 import time
 
@@ -68,7 +70,6 @@ def fabric_request(method: str, path: str, token: str, **kwargs) -> requests.Res
     headers = kwargs.pop("headers", {})
     headers["Authorization"] = f"Bearer {token}"
 
-    # Si on envoie un body, on s'assure du content-type JSON
     if "json" in kwargs and "Content-Type" not in headers:
         headers["Content-Type"] = "application/json"
 
@@ -94,7 +95,6 @@ def get_or_create_workspace(
     2. Si un workspace avec displayName == workspace_name existe -> retourne son id
     3. Sinon, crée le workspace (POST /workspaces)
     """
-    # 1. List workspaces
     resp = fabric_request("GET", "workspaces", token)
     data = resp.json()
 
@@ -106,7 +106,6 @@ def get_or_create_workspace(
             print(f"Workspace '{workspace_name}' already exists (id={ws_id}).")
             return ws_id
 
-    # 2. Create workspace
     body: Dict[str, object] = {"displayName": workspace_name}
     if capacity_id:
         body["capacityId"] = capacity_id
@@ -132,47 +131,6 @@ def list_items_by_type(
     resp = fabric_request("GET", path, token)
     data = resp.json()
     return data.get("value", data.get("items", []))
-
-def get_workspace_name_from_id(workspace_id: str, token: str) -> str:
-    """
-    Récupère le nom d'un workspace à partir de son ID.
-    """
-    resp = fabric_request("GET", f"workspaces/{workspace_id}", token)
-    workspace = resp.json()
-    return workspace.get("displayName", workspace_id)
-
-def rebind_report_to_dataset(
-    workspace_id: str,
-    report_id: str,
-    dataset_id: str,
-    token: str
-) -> None:
-    """
-    Relie un rapport à un dataset via l'API Power BI.
-    Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/reports/rebind-report-in-group
-    """
-    print(f"🔗 Liaison du rapport au dataset...")
-    print(f"   Report ID: {report_id}")
-    print(f"   Dataset ID: {dataset_id}")
-    
-    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/Rebind"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-    body = {
-        "datasetId": dataset_id
-    }
-    
-    resp = requests.post(url, headers=headers, json=body)
-    
-    if resp.ok:
-        print(f"✅ Rapport lié au dataset avec succès")
-    else:
-        print(f"⚠️ Échec du rebind: HTTP {resp.status_code}")
-        print(f"   {resp.text}")
-        # Ne pas lever d'exception, juste avertir
-        print(f"   Le rapport a été créé mais n'est pas lié au dataset")
 
 
 def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
@@ -218,8 +176,6 @@ def wait_for_long_running_operation(
     """
     Suit une opération longue durée (Long Running Operation - LRO) via son URL.
     L'URL peut pointer vers l'API Fabric OU l'API Power BI (wabi-*).
-    
-    Doc: https://learn.microsoft.com/en-us/rest/api/fabric/articles/long-running-operation
     """
     print(f"\n⏳ Suivi de l'opération: {operation_url}")
     
@@ -230,7 +186,6 @@ def wait_for_long_running_operation(
         attempt += 1
         
         try:
-            # Appeler directement l'URL complète (pas via fabric_request qui ajoute le base URL)
             headers = {"Authorization": f"Bearer {token}"}
             resp = requests.get(operation_url, headers=headers)
             
@@ -250,14 +205,11 @@ def wait_for_long_running_operation(
         status = operation_status.get("status", "").lower()
         percent = operation_status.get("percentComplete", 0)
         
-        # Pour debug: afficher la réponse complète
         if attempt == 1 or attempt % 10 == 0:
             print(f"   Réponse opération: {json.dumps(operation_status, indent=2)}")
         
         print(f"   [{attempt}] Status: {status} ({percent}%)")
         
-        # Status possibles: NotStarted, Running, Succeeded, Failed, Undefined
-        # Power BI peut aussi retourner: InProgress, Completed
         if status in ["succeeded", "completed"]:
             print("   ✅ Opération terminée avec succès")
             return operation_status
@@ -281,88 +233,216 @@ def wait_for_long_running_operation(
     
     raise FabricApiError(f"⏱️ Timeout après {max_wait_seconds}s")
 
-def fix_definition_pbir(
-    parts: List[Dict[str, str]], 
+
+# ============================================================
+# DÉPLOIEMENT DE RAPPORTS VIA API POWER BI
+# ============================================================
+
+def create_pbix_from_pbip(pbip_folder: str, output_path: Optional[str] = None) -> str:
+    """
+    Crée un fichier .pbix temporaire depuis un dossier .Report PBIP.
+    Le .pbix est un ZIP contenant tous les fichiers du PBIP.
+    """
+    if output_path is None:
+        output_path = tempfile.mktemp(suffix=".pbix")
+    
+    print(f"📦 Création du .pbix depuis {pbip_folder}...")
+    
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(pbip_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, pbip_folder)
+                zipf.write(file_path, arcname)
+    
+    file_size = os.path.getsize(output_path) / (1024 * 1024)
+    print(f"✅ .pbix créé: {output_path} ({file_size:.2f} MB)")
+    return output_path
+
+
+def upload_pbix_via_powerbi_api(
     workspace_id: str,
+    pbix_path: str,
+    report_name: str,
+    token: str,
+) -> str:
+    """
+    Upload un fichier .pbix via l'API Power BI Import.
+    
+    Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/imports/post-import-in-group
+    """
+    print(f"\n📤 Upload du rapport via Power BI API...")
+    print(f"   Fichier: {pbix_path}")
+    print(f"   Nom: {report_name}")
+    
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/imports"
+    
+    params = {
+        "datasetDisplayName": report_name,
+        "nameConflict": "CreateOrOverwrite",
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    
+    with open(pbix_path, 'rb') as f:
+        files = {
+            'file': (os.path.basename(pbix_path), f, 'application/octet-stream')
+        }
+        
+        resp = requests.post(url, headers=headers, params=params, files=files)
+    
+    if not resp.ok:
+        raise FabricApiError(
+            f"Failed to upload .pbix: HTTP {resp.status_code}\n{resp.text}"
+        )
+    
+    import_info = resp.json()
+    import_id = import_info.get("id")
+    
+    print(f"✅ Import démarré (id={import_id})")
+    
+    print(f"⏳ Attente de la fin de l'import...")
+    return wait_for_import_completion(workspace_id, import_id, token)
+
+
+def wait_for_import_completion(
+    workspace_id: str,
+    import_id: str,
+    token: str,
+    max_wait: int = 300
+) -> str:
+    """
+    Attend la fin d'un import Power BI et retourne le report_id.
+    """
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/imports/{import_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    start = time.time()
+    while (time.time() - start) < max_wait:
+        resp = requests.get(url, headers=headers)
+        if not resp.ok:
+            print(f"⚠️ Erreur vérification import: {resp.status_code}")
+            time.sleep(5)
+            continue
+        
+        import_status = resp.json()
+        status = import_status.get("importState", "Unknown")
+        
+        print(f"   Status: {status}")
+        
+        if status == "Succeeded":
+            reports = import_status.get("reports", [])
+            if reports:
+                report_id = reports[0]["id"]
+                report_name = reports[0].get("name", "")
+                print(f"✅ Import terminé - Report: {report_name} (id={report_id})")
+                return report_id
+            else:
+                raise FabricApiError("Import succeeded but no report found")
+        
+        elif status == "Failed":
+            error = import_status.get("error", "Unknown error")
+            raise FabricApiError(f"Import failed: {error}")
+        
+        time.sleep(5)
+    
+    raise FabricApiError(f"Import timeout after {max_wait}s")
+
+
+def rebind_report_to_dataset(
+    workspace_id: str,
+    report_id: str,
+    dataset_id: str,
     token: str
-) -> tuple[List[Dict[str, str]], str]:
+) -> None:
     """
-    Remplace byPath par byPath:null dans definition.pbir.
-    Retourne (parts_modifiés, dataset_id) pour rebind ultérieur.
+    Relie un rapport à un dataset via l'API Power BI.
+    Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/reports/rebind-report-in-group
     """
-    # Récupérer le nom du workspace
-    workspace_name = get_workspace_name_from_id(workspace_id, token)
-    print(f"🔧 Workspace name: {workspace_name}")
+    print(f"🔗 Liaison du rapport au dataset...")
+    print(f"   Report ID: {report_id}")
+    print(f"   Dataset ID: {dataset_id}")
     
-    fixed_parts = []
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/Rebind"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "datasetId": dataset_id
+    }
+    
+    resp = requests.post(url, headers=headers, json=body)
+    
+    if resp.ok:
+        print(f"✅ Rapport lié au dataset avec succès")
+    else:
+        print(f"⚠️ Échec du rebind: HTTP {resp.status_code}")
+        print(f"   {resp.text}")
+        print(f"   Le rapport a été créé mais n'est pas lié au dataset")
+
+
+def deploy_report_via_pbix(
+    workspace_id: str,
+    pbip_folder: str,
+    token: str,
+) -> str:
+    """
+    Déploie un rapport depuis un dossier PBIP via l'API Power BI.
+    Contourne les limitations de l'API Fabric Items pour les rapports.
+    """
+    report_name = os.path.basename(pbip_folder).replace(".Report", "")
+    
+    # Chercher le dataset associé depuis definition.pbir
     dataset_id = None
+    try:
+        pbir_path = os.path.join(pbip_folder, "definition.pbir")
+        if os.path.exists(pbir_path):
+            with open(pbir_path, 'r', encoding='utf-8') as f:
+                pbir = json.load(f)
+                if "datasetReference" in pbir and "byPath" in pbir["datasetReference"]:
+                    path = pbir["datasetReference"]["byPath"].get("path", "")
+                    if path:
+                        dataset_name = path.split("/")[-1].replace(".SemanticModel", "")
+                        print(f"🔍 Recherche du dataset '{dataset_name}'...")
+                        items = list_items_by_type(workspace_id, "SemanticModel", token)
+                        for item in items:
+                            if item.get("displayName") == dataset_name:
+                                dataset_id = item["id"]
+                                print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
+                                break
+    except Exception as e:
+        print(f"⚠️ Impossible de trouver le dataset: {e}")
     
-    for part in parts:
-        if part["path"] == "definition.pbir":
-            # Décoder le contenu
-            content = base64.b64decode(part["payload"]).decode("utf-8")
-            pbir = json.loads(content)
-            
-            # Extraire le nom du dataset depuis l'ancien byPath (si présent)
-            dataset_name = None
-            if "datasetReference" in pbir:
-                if "byPath" in pbir["datasetReference"]:
-                    old_path = pbir["datasetReference"]["byPath"].get("path", "")
-                    if old_path:
-                        # Ex: "../Mon_Dataset.SemanticModel" -> "Mon_Dataset"
-                        dataset_name = old_path.split("/")[-1].replace(".SemanticModel", "")
-            
-            # Si pas de dataset trouvé, essayer de deviner depuis le dossier
-            if not dataset_name:
-                print("⚠️ Impossible d'extraire le nom du dataset depuis byPath")
-                dataset_name = "DATASET_NAME_PLACEHOLDER"
-            
-            # 🔑 CHERCHER LE GUID DU DATASET DANS LE WORKSPACE
-            print(f"🔍 Recherche du dataset '{dataset_name}' dans le workspace...")
-            try:
-                items = list_items_by_type(workspace_id, "SemanticModel", token)
-                for item in items:
-                    if item.get("displayName") == dataset_name:
-                        dataset_id = item["id"]
-                        print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
-                        break
-                
-                if not dataset_id:
-                    print(f"❌ Dataset '{dataset_name}' introuvable dans le workspace!")
-                    print(f"📋 Datasets disponibles:")
-                    for item in items:
-                        print(f"   - {item.get('displayName')} (id={item.get('id')})")
-            except Exception as e:
-                print(f"⚠️ Erreur lors de la recherche du dataset: {e}")
-            
-            print(f"🔧 Configuration dataset reference")
-            print(f"   Dataset name: {dataset_name}")
-            if dataset_id:
-                print(f"   Dataset GUID: {dataset_id}")
-            print(f"   Workspace: {workspace_name}")
-            
-            # Supprimer complètement datasetReference pour créer un rapport sans dataset
-            # Fabric refuse byPath:null, donc on enlève tout
-            if "datasetReference" in pbir:
-                del pbir["datasetReference"]
-            
-            print(f"⚠️ datasetReference supprimé (rapport créé sans dataset)")
-            if dataset_id:
-                print(f"💡 Sera lié au dataset après création via rebindReport API")
-            
-            # Ré-encoder
-            new_content = json.dumps(pbir, indent=2)
-            new_b64 = base64.b64encode(new_content.encode("utf-8")).decode("ascii")
-            
-            fixed_parts.append({
-                "path": part["path"],
-                "payload": new_b64,
-                "payloadType": "InlineBase64"
-            })
-        else:
-            fixed_parts.append(part)
+    # 1. Créer un .pbix temporaire
+    pbix_path = create_pbix_from_pbip(pbip_folder)
     
-    return fixed_parts, dataset_id
+    try:
+        # 2. Uploader via Power BI API
+        report_id = upload_pbix_via_powerbi_api(
+            workspace_id=workspace_id,
+            pbix_path=pbix_path,
+            report_name=report_name,
+            token=token,
+        )
+        
+        # 3. Si dataset trouvé, rebind
+        if dataset_id:
+            rebind_report_to_dataset(workspace_id, report_id, dataset_id, token)
+        
+        return report_id
+    
+    finally:
+        if os.path.exists(pbix_path):
+            os.remove(pbix_path)
+            print(f"🗑️ Fichier temporaire supprimé")
+
+
+# ============================================================
+# FONCTION PRINCIPALE DE DÉPLOIEMENT
+# ============================================================
 
 def create_or_update_item_from_folder(
     workspace_id: str,
@@ -379,23 +459,22 @@ def create_or_update_item_from_folder(
     print(f"   Folder: {folder}")
     print(f"{'='*60}")
 
-    parts = build_definition_parts_from_folder(folder)
-    # 🔧 CORRECTION AUTOMATIQUE POUR LES REPORTS
-    dataset_id_for_rebind = None
+    # === TRAITEMENT SPÉCIAL POUR LES REPORTS ===
     if item_type == "Report":
-        parts, dataset_id_for_rebind = fix_definition_pbir(parts, workspace_id, token)
-        print("Modified definition.pbir to include reference to semantic model")
+        print("🎯 Utilisation de l'API Power BI pour contourner les limitations Fabric")
+        return deploy_report_via_pbix(workspace_id, folder, token)
+
+    # === TRAITEMENT NORMAL POUR LES AUTRES ITEMS (SemanticModel, etc.) ===
+    parts = build_definition_parts_from_folder(folder)
     print(f"   📄 {len(parts)} fichiers encodés")
     
-    # Afficher les fichiers pour debug
-    for part in parts[:5]:  # Limiter à 5 pour pas polluer
+    for part in parts[:5]:
         print(f"      - {part['path']}")
     if len(parts) > 5:
         print(f"      ... et {len(parts) - 5} autres fichiers")
     
     definition = {"parts": parts}
 
-    # Check if exists
     print(f"\n🔍 Vérification si '{display_name}' existe déjà...")
     existing_items = list_items_by_type(workspace_id, item_type, token)
     item_id = None
@@ -425,37 +504,20 @@ def create_or_update_item_from_folder(
 
         status_code = resp.status_code
         print(f"\n📡 Réponse Fabric: HTTP {status_code}")
-        
-        # AFFICHER TOUS LES HEADERS POUR DEBUG
-        print(f"📋 Headers de réponse:")
-        for header, value in resp.headers.items():
-            print(f"   {header}: {value}")
 
-        # Cas 1: Création synchrone réussie (201)
         if status_code == 201:
             try:
                 item = resp.json()
                 item_id = item["id"]
                 print(f"✅ Créé immédiatement (201) - id={item_id}")
-                # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
-                # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
-                if item_type == "Report" and dataset_id_for_rebind and item_id:
-                    try:
-                        rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
-                    except Exception as e:
-                        print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
-                        print(f"   Tu devras le faire manuellement dans Fabric")
                 return item_id
             except Exception as e:
                 print(f"❌ Erreur parsing JSON: {e}")
-                print(f"Raw response: {resp.text}")
                 raise FabricApiError("Failed to parse 201 response")
         
-        # Cas 2: Création asynchrone (202)
         elif status_code == 202:
             print("⏳ Création asynchrone (202 Accepted)")
             
-            # Chercher l'URL de l'opération
             location = resp.headers.get("Location")
             retry_after = resp.headers.get("Retry-After", "5")
             
@@ -464,29 +526,17 @@ def create_or_update_item_from_folder(
                 print(f"   Retry-After: {retry_after}s")
                 
                 try:
-                    # Attendre un peu avant de commencer le polling
                     time.sleep(int(retry_after))
+                    wait_for_long_running_operation(location, token)
                     
-                    # Suivre l'opération
-                    operation_result = wait_for_long_running_operation(location, token)
-                    
-                    # Récupérer l'item créé
                     print("\n🔍 Recherche de l'item créé...")
-                    time.sleep(3)  # Attendre que l'item soit bien visible
+                    time.sleep(3)
                     
                     items = list_items_by_type(workspace_id, item_type, token)
                     for it in items:
                         if it.get("displayName") == display_name:
                             item_id = it["id"]
                             print(f"✅ Item trouvé après opération async - id={item_id}")
-                            # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
-                            # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
-                            if item_type == "Report" and dataset_id_for_rebind and item_id:
-                                try:
-                                    rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
-                                except Exception as e:
-                                    print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
-                                    print(f"   Tu devras le faire manuellement dans Fabric")
                             return item_id
                     
                     raise FabricApiError(
@@ -495,29 +545,16 @@ def create_or_update_item_from_folder(
                     
                 except Exception as e:
                     print(f"\n❌ Erreur lors du suivi de l'opération: {e}")
-                    print("📋 Contenu de la réponse 202:")
-                    print(resp.text)
                     raise
             
             else:
                 print("⚠️ PAS DE LOCATION HEADER!")
-                print("📋 Contenu de la réponse 202:")
-                print(resp.text)
-                
-                # Fallback: polling manuel
-                print("\n⚠️ Fallback: polling manuel des items...")
-                return _wait_for_item_manual_polling(
-                    workspace_id, display_name, item_type, token
-                )
+                raise FabricApiError("202 response without Location header")
         
-        # Cas 3: Code inattendu
         else:
             print(f"❌ Code HTTP inattendu: {status_code}")
-            print(f"📋 Réponse complète:")
             print(resp.text)
-            raise FabricApiError(
-                f"Unexpected status code {status_code} for item creation"
-            )
+            raise FabricApiError(f"Unexpected status code {status_code}")
 
     # -------------------------
     # CASE 2 : UPDATE
@@ -549,63 +586,9 @@ def create_or_update_item_from_folder(
             time.sleep(10)
         
         print(f"✅ Mis à jour (async)")
-        # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
-        # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
-        if item_type == "Report" and dataset_id_for_rebind and item_id:
-            try:
-                rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
-            except Exception as e:
-                print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
-                print(f"   Tu devras le faire manuellement dans Fabric")
         return item_id
     
     else:
         print(f"❌ Mise à jour échouée: {status_code}")
         print(resp.text)
         raise FabricApiError(f"Update failed with status {status_code}")
-
-
-def _wait_for_item_manual_polling(
-    workspace_id: str,
-    display_name: str,
-    item_type: str,
-    token: str,
-    max_attempts: int = 60,
-) -> str:
-    """
-    Fallback: polling manuel si pas de Location header.
-    """
-    print(f"⏳ Attente manuelle de la création (max {max_attempts * 5}s)...")
-    
-    for attempt in range(1, max_attempts + 1):
-        time.sleep(5)
-        
-        try:
-            items = list_items_by_type(workspace_id, item_type, token)
-            for it in items:
-                if it.get("displayName") == display_name:
-                    item_id = it["id"]
-                    print(f"✅ Item trouvé après {attempt * 5}s (id={item_id})")
-                    return item_id
-        except Exception as e:
-            print(f"   ⚠️ Erreur lors du polling (tentative {attempt}): {e}")
-        
-        if attempt % 6 == 0:  # Log toutes les 30s
-            print(f"   Toujours en attente... ({attempt * 5}s écoulées)")
-    
-    # Timeout - afficher les items existants pour debug
-    print(f"\n❌ TIMEOUT après {max_attempts * 5}s")
-    print(f"🔍 Items {item_type} actuels dans le workspace:")
-    try:
-        items = list_items_by_type(workspace_id, item_type, token)
-        if not items:
-            print("   (aucun item)")
-        for it in items:
-            print(f"   - {it.get('displayName')} (id={it.get('id')})")
-    except Exception as e:
-        print(f"   Erreur lors de la récupération des items: {e}")
-    
-    raise FabricApiError(
-        f"Timeout: {item_type} '{display_name}' non créé. "
-        "Vérifier les logs Fabric et les permissions du Service Principal."
-    )

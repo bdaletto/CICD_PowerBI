@@ -1,335 +1,611 @@
 import os
-import shutil
-import subprocess
-import re
-import json
 import sys
 import base64
+import json
 from typing import List, Dict, Optional
+import time
+
 import requests
 
-def fab_authenticate_spn(
-    client_id: str = None, client_secret: str = None, tenant_id: str = None
-):
+# Base Fabric REST API
+FABRIC_API_BASE = "https://api.fabric.microsoft.com/v1"
+
+
+class FabricAuthError(Exception):
+    """Authentication/Token errors."""
+    pass
+
+
+class FabricApiError(Exception):
+    """Fabric REST API call errors."""
+    pass
+
+
+def _get_env_or_fail(name: str) -> str:
+    """Get an env var or raise a clear error."""
+    value = os.getenv(name)
+    if not value:
+        raise FabricAuthError(f"Missing environment variable: {name}")
+    return value
+
+
+def get_access_token_spn() -> str:
     """
-    Authenticates with a Service Principal Name (SPN) using environment variables.
-    This function retrieves the client ID, client secret, and tenant ID from the environment
-    variables `FABRIC_CLIENT_ID`, `FABRIC_CLIENT_SECRET`, and `FABRIC_TENANT_ID` respectively.
-    It then uses these credentials to authenticate with the SPN.
-    Raises:
-        Exception: If any of the required environment variables (`FABRIC_CLIENT_ID`,
-                   `FABRIC_CLIENT_SECRET`, `FABRIC_TENANT_ID`) are not set.
-    Side Effects:
-        Executes the `run_fab_command` function to set the encryption fallback and perform the authentication.
+    Récupère un access token Microsoft Entra pour Fabric en client_credentials
+    (Service Principal) vers le scope Fabric: https://api.fabric.microsoft.com/.default
     """
+    tenant_id = _get_env_or_fail("FABRIC_TENANT_ID")
+    client_id = _get_env_or_fail("FABRIC_CLIENT_ID")
+    client_secret = _get_env_or_fail("FABRIC_CLIENT_SECRET")
 
-    print("Authenticating with SPN")
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "https://api.fabric.microsoft.com/.default",
+    }
 
-    if client_id is None or client_secret is None or tenant_id is None:
-        client_id = os.getenv("FABRIC_CLIENT_ID")
-        client_secret = os.getenv("FABRIC_CLIENT_SECRET")
-        tenant_id = os.getenv("FABRIC_TENANT_ID")
-
-    if not tenant_id or not client_id or not client_secret:
-        raise Exception(
-            "Environment variables FABRIC_CLIENT_ID, FABRIC_CLIENT_SECRET and FABRIC_TENANT_ID must be set"
+    resp = requests.post(token_url, data=data)
+    if resp.status_code != 200:
+        raise FabricAuthError(
+            f"Failed to acquire token. HTTP {resp.status_code}: {resp.text}"
         )
 
-    run_fab_command("config set fab_encryption_fallback_enabled true")
-
-    run_fab_command(
-        f"auth login -u {client_id} -p {client_secret} --tenant {tenant_id}",
-        include_secrets=True,
-    )
+    token = resp.json().get("access_token")
+    if not token:
+        raise FabricAuthError("Token response does not contain 'access_token'.")
+    return token
 
 
-def run_fab_command(
-    command,
-    capture_output: bool = False,
-    include_secrets: bool = False,
-    silently_continue: bool = False,
-):
+def fabric_request(method: str, path: str, token: str, **kwargs) -> requests.Response:
     """
-    Executes a Fabric command.
-    Parameters:
-    command (str): The Fabric command to execute.
-    capture_output (bool): If True, captures the command's output. Defaults to False.
-    include_secrets (bool): If True, includes secrets in the debug output. Defaults to False.
-    Returns:
-    str: The output of the command if capture_output is True.
-    Raises:
-    Exception: If there is an error running the Fabric command.
+    Appelle l'API Fabric REST (Core) :
+      - Ajoute automatiquement le header Authorization: Bearer <token>
+      - Lève une exception si le status HTTP n'est pas 2xx
     """
+    url = f"{FABRIC_API_BASE}/{path.lstrip('/')}"
+    headers = kwargs.pop("headers", {})
+    headers["Authorization"] = f"Bearer {token}"
 
-    result = subprocess.run(
-        ["fab", "-c", command], capture_output=capture_output, text=True
-    )
+    # Si on envoie un body, on s'assure du content-type JSON
+    if "json" in kwargs and "Content-Type" not in headers:
+        headers["Content-Type"] = "application/json"
 
-    if not (silently_continue) and (result.returncode > 0 or result.stderr):
-        raise Exception(
-            f"Error running fab command. exit_code: '{result.returncode}'; stderr: '{result.stderr}'"
+    print(f"Calling Fabric API: {method} {url}")
+    resp = requests.request(method, url, headers=headers, **kwargs)
+
+    if not resp.ok:
+        raise FabricApiError(
+            f"{method} {url} failed. "
+            f"HTTP {resp.status_code}: {resp.text}"
         )
 
-    if capture_output:
-
-        output = result.stdout.strip().split("\n")[-1]
-
-        return output
+    return resp
 
 
-def create_workspace(workspace_name, capacity_name: str = "none", upns: list = None):
+def get_or_create_workspace(
+    workspace_name: str,
+    token: str,
+    capacity_id: Optional[str] = None,
+) -> str:
     """
-    Creates a new workspace with the specified name and optional capacity.
-    Additionally, assigns admin roles to the provided user principal names (UPNs).
-    Args:
-        workspace_name (str): The name of the workspace to be created.
-        capacity_name (str, optional): The name of the capacity to assign to the workspace. Defaults to None.
-        upns (list, optional): A list of user principal names to be assigned as admins to the workspace. Defaults to None.
-    Returns:
-        None
+    1. Liste les workspaces (GET /workspaces)
+    2. Si un workspace avec displayName == workspace_name existe -> retourne son id
+    3. Sinon, crée le workspace (POST /workspaces)
     """
+    # 1. List workspaces
+    resp = fabric_request("GET", "workspaces", token)
+    data = resp.json()
 
-    print(f"::group::Creating workspace: {workspace_name}")
+    workspaces = data.get("value", data.get("workspaces", []))
 
-    command = f"create /{workspace_name}.Workspace"
+    for ws in workspaces:
+        if ws.get("displayName") == workspace_name:
+            ws_id = ws.get("id")
+            print(f"Workspace '{workspace_name}' already exists (id={ws_id}).")
+            return ws_id
 
-    if capacity_name:
-        command += f" -P capacityName={capacity_name}"
+    # 2. Create workspace
+    body: Dict[str, object] = {"displayName": workspace_name}
+    if capacity_id:
+        body["capacityId"] = capacity_id
 
-    run_fab_command(command, silently_continue=True)
-
-    if upns is not None:
-
-        upns = [x for x in upns if x.strip()]
-
-        if len(upns) > 0:
-            print(f"Adding UPNs")
-
-            for upn in upns:
-                run_fab_command(
-                    f"acl set -f /{workspace_name}.Workspace -I {upn} -R admin"
-                )
-
-    workspace_id = run_fab_command(
-        f"get /{workspace_name}.Workspace -q id", capture_output=True
-    )
-
-    print(f"::endgroup::")
-
-    return workspace_id
+    print(f"Creating workspace '{workspace_name}'...")
+    resp = fabric_request("POST", "workspaces", token, json=body)
+    ws = resp.json()
+    ws_id = ws["id"]
+    print(f"Workspace created (id={ws_id}).")
+    return ws_id
 
 
-def create_connection(
-    connection_name: str = None, parameters: dict = None, upns: list = None
-):
+def list_items_by_type(
+    workspace_id: str,
+    item_type: str,
+    token: str,
+) -> List[Dict]:
     """
-    Creates a connection with the specified name, parameters, and UPNs.
-    Args:
-        connection_name (str, optional): The name of the connection to create. Defaults to None.
-        parameters (dict, optional): A dictionary of parameters to include in the connection. Defaults to None.
-        upns (list, optional): A list of UPNs to add to the connection with admin rights. Defaults to None.
-    Returns:
-        str: The ID of the created connection.
+    Liste les items d'un workspace filtrés par type (Report, SemanticModel, ...)
+      GET /workspaces/{workspaceId}/items?type={item_type}
     """
+    path = f"workspaces/{workspace_id}/items?type={item_type}"
+    resp = fabric_request("GET", path, token)
+    data = resp.json()
+    return data.get("value", data.get("items", []))
 
-    print(f"::group::Creating connection {connection_name}")
-
-    if parameters:
-        param_str = ",".join(f"{key}={value}" for key, value in parameters.items())
-        param_str = f"-P {param_str}"
-    else:
-        param_str = ""
-
-    run_fab_command(
-        f"create .connections/{connection_name}.Connection {param_str}",
-        silently_continue=True,
-    )
-
-    connection_id = run_fab_command(
-        f"get .connections/{connection_name}.Connection -q id", capture_output=True
-    )
-
-    if upns is not None:
-
-        upns = [x for x in upns if x.strip()]
-
-        if len(upns) > 0:
-            print(f"Adding UPNs to item {connection_name}")
-
-            for upn in upns:
-                run_fab_command(
-                    f"acl set -f .connections/{connection_name}.Connection -I {upn} -R admin"
-                )
-
-    print(f"::endgroup::")
-
-    return connection_id
-
-
-def create_item(
-    workspace_name: str = None,
-    item_type: str = None,
-    item_name: str = None,
-    parameters: dict = None,
-):
+def get_workspace_name_from_id(workspace_id: str, token: str) -> str:
     """
-    Creates an item in the specified workspace.
-    Args:
-        workspace_name (str, optional): The name of the workspace where the item will be created.
-        item_type (str, optional): The type of the item to be created.
-        item_name (str, optional): The name of the item to be created.
-        parameters (dict, optional): A dictionary of parameters to be passed during item creation.
-    Returns:
-        str: The ID of the created item.
+    Récupère le nom d'un workspace à partir de son ID.
     """
+    resp = fabric_request("GET", f"workspaces/{workspace_id}", token)
+    workspace = resp.json()
+    return workspace.get("displayName", workspace_id)
 
-    print(f"::group::Creating item {workspace_name}/{item_name}.{item_type}")
-
-    if parameters:
-        param_str = ",".join(f"{key}={value}" for key, value in parameters.items())
-        param_str = f"-P {param_str}"
-    else:
-        param_str = ""
-
-    run_fab_command(
-        f"create /{workspace_name}.workspace/{item_name}.{item_type} {param_str}",
-        silently_continue=True,
-    )
-
-    item_id = run_fab_command(
-        f"get /{workspace_name}.workspace/{item_name}.{item_type} -q id",
-        capture_output=True,
-    )
-
-    print(f"::endgroup::")
-
-    return item_id
-
-
-def deploy_item(
-    src_path,
-    workspace_name,
-    item_type: str = None,
-    item_name: str = None,
-    find_and_replace: dict = None,
-    what_if: bool = False,
-    func_after_staging=None,
-):
+def rebind_report_to_dataset(
+    workspace_id: str,
+    report_id: str,
+    dataset_id: str,
+    token: str
+) -> None:
     """
-    Deploys an item to a specified workspace.
-    Args:
-        src_path (str): The source path of the item to be deployed.
-        workspace_name (str): The name of the workspace where the item will be deployed.
-        item_type (str, optional): The type of the item. If not provided, it will be inferred from the platform data.
-        item_name (str, optional): The name of the item. If not provided, it will be inferred from the platform data.
-        find_and_replace (dict, optional): A dictionary where keys are tuples containing a file filter regex and a find regex,
-                                           and values are the replacement strings. This will be used to perform find and replace
-                                           operations on the files in the staging path.
-        what_if (bool, optional): If True, the deployment will be simulated but not actually performed. Defaults to False.
-        func_after_staging (callable, optional): A function to be called after the item is copied to the staging path. It should
-                                                 accept the staging path as its only argument.
-    Returns:
-        str: The ID of the deployed item if `what_if` is False. Otherwise, returns None.
+    Relie un rapport à un dataset via l'API Power BI.
+    Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/reports/rebind-report-in-group
     """
-
-    print(f"::group::Deploying {src_path}")
-
-    staging_path = copy_to_staging(src_path)
-
-    # Call function that provides flexibility to change something in the staging files
-
-    if func_after_staging:
-        func_after_staging(staging_path)
-
-    if os.path.exists(os.path.join(staging_path, ".platform")):
-
-        with open(os.path.join(staging_path, ".platform"), "r") as file:
-            platform_data = json.load(file)
-
-        if item_name is None:
-            item_name = platform_data["metadata"]["displayName"]
-
-        if item_type is None:
-            item_type = platform_data["metadata"]["type"]
-
-    # Loop through all files and apply the find & replace with regular expressions
-
-    if find_and_replace:
-
-        for root, _, files in os.walk(staging_path):
-            for file in files:
-
-                file_path = os.path.join(root, file)
-
-                with open(file_path, "r") as file:
-                    text = file.read()
-
-                # Loop parameters and execute the find & replace in the ones that match the file path
-
-                for key, replace_value in find_and_replace.items():
-
-                    find_and_replace_file_filter = key[0]
-
-                    find_and_replace_file_find = key[1]
-
-                    if re.search(find_and_replace_file_filter, file_path):
-                        text, count_subs = re.subn(
-                            find_and_replace_file_find, replace_value, text
-                        )
-
-                        if count_subs > 0:
-
-                            print(
-                                f"Find & replace in file '{file_path}' with regex '{find_and_replace_file_find}'"
-                            )
-
-                            with open(file_path, "w") as file:
-                                file.write(text)
-
-    if not what_if:
-        run_fab_command(
-            f"import -f /{workspace_name}.workspace/{item_name}.{item_type} -i {staging_path}"
-        )
-
-        # Return id after deployment
-
-        item_id = run_fab_command(
-            f"get /{workspace_name}.workspace/{item_name}.{item_type} -q id",
-            capture_output=True,
-        )
-
-        return item_id
-
-    print(f"::endgroup::")
-
-
-def copy_to_staging(path):
-    """
-    Copies the contents of the specified directory to a staging folder.
-    This function ensures that a staging folder exists, and if it already exists,
-    it removes the existing staging folder and creates a new one. It then copies
-    all files and directories from the specified path to the staging folder.
-    Args:
-        path (str): The path of the directory to be copied to the staging folder.
-    Returns:
-        str: The path to the staging folder where the contents have been copied.
-    """
-
-    # ensure staging folder exists
-
-    current_folder = os.path.dirname(__file__)
+    print(f"🔗 Liaison du rapport au dataset...")
+    print(f"   Report ID: {report_id}")
+    print(f"   Dataset ID: {dataset_id}")
     
-    path_staging = os.path.join(current_folder, "_stg", os.path.basename(path))
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/Rebind"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "datasetId": dataset_id
+    }
+    
+    resp = requests.post(url, headers=headers, json=body)
+    
+    if resp.ok:
+        print(f"✅ Rapport lié au dataset avec succès")
+    else:
+        print(f"⚠️ Échec du rebind: HTTP {resp.status_code}")
+        print(f"   {resp.text}")
+        # Ne pas lever d'exception, juste avertir
+        print(f"   Le rapport a été créé mais n'est pas lié au dataset")
 
-    if os.path.exists(path_staging):
-        shutil.rmtree(path_staging)
 
-    os.makedirs(path_staging)
+def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
+    """
+    Construit la liste des 'parts' pour un Item Definition à partir d'un dossier PBIP :
+      - parcourt tous les fichiers (definition/, StaticResources/, .platform, etc.)
+      - crée un part par fichier:
+          path       = chemin relatif (style 'definition/report.json')
+          payload    = fichier encodé en base64
+          payloadType= InlineBase64 (unique valeur supportée)
+    """
+    parts: List[Dict[str, str]] = []
 
-    # copy files to staging folder
+    for root, _, files in os.walk(folder):
+        for filename in files:
+            full_path = os.path.join(root, filename)
+            rel_path = os.path.relpath(full_path, folder).replace("\\", "/")
 
-    shutil.copytree(
-        path, path_staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.abf")
+            with open(full_path, "rb") as f:
+                content = f.read()
+
+            b64 = base64.b64encode(content).decode("ascii")
+            parts.append(
+                {
+                    "path": rel_path,
+                    "payload": b64,
+                    "payloadType": "InlineBase64",
+                }
+            )
+
+    if not parts:
+        raise ValueError(f"No files found in PBIP folder: {folder}")
+
+    return parts
+
+
+def wait_for_long_running_operation(
+    operation_url: str,
+    token: str,
+    max_wait_seconds: int = 300,
+    poll_interval: int = 5,
+) -> Dict:
+    """
+    Suit une opération longue durée (Long Running Operation - LRO) via son URL.
+    L'URL peut pointer vers l'API Fabric OU l'API Power BI (wabi-*).
+    
+    Doc: https://learn.microsoft.com/en-us/rest/api/fabric/articles/long-running-operation
+    """
+    print(f"\n⏳ Suivi de l'opération: {operation_url}")
+    
+    start_time = time.time()
+    attempt = 0
+    
+    while (time.time() - start_time) < max_wait_seconds:
+        attempt += 1
+        
+        try:
+            # Appeler directement l'URL complète (pas via fabric_request qui ajoute le base URL)
+            headers = {"Authorization": f"Bearer {token}"}
+            resp = requests.get(operation_url, headers=headers)
+            
+            print(f"   [{attempt}] GET {operation_url} -> HTTP {resp.status_code}")
+            
+            if not resp.ok:
+                print(f"   ⚠️ Erreur HTTP {resp.status_code}: {resp.text}")
+                time.sleep(poll_interval)
+                continue
+            
+            operation_status = resp.json()
+        except Exception as e:
+            print(f"   ⚠️ Erreur lors du polling (tentative {attempt}): {e}")
+            time.sleep(poll_interval)
+            continue
+        
+        status = operation_status.get("status", "").lower()
+        percent = operation_status.get("percentComplete", 0)
+        
+        # Pour debug: afficher la réponse complète
+        if attempt == 1 or attempt % 10 == 0:
+            print(f"   Réponse opération: {json.dumps(operation_status, indent=2)}")
+        
+        print(f"   [{attempt}] Status: {status} ({percent}%)")
+        
+        # Status possibles: NotStarted, Running, Succeeded, Failed, Undefined
+        # Power BI peut aussi retourner: InProgress, Completed
+        if status in ["succeeded", "completed"]:
+            print("   ✅ Opération terminée avec succès")
+            return operation_status
+        
+        elif status in ["failed", "cancelled"]:
+            error_info = operation_status.get("error", operation_status)
+            print(f"\n❌ ÉCHEC DE L'OPÉRATION:")
+            print(f"   Status: {status}")
+            print(f"   Error: {json.dumps(error_info, indent=2)}")
+            raise FabricApiError(
+                f"Opération {status}: {json.dumps(error_info)}"
+            )
+        
+        elif status in ["running", "notstarted", "inprogress"]:
+            time.sleep(poll_interval)
+            continue
+        
+        else:
+            print(f"   ⚠️ Statut inconnu: {status}, on continue...")
+            time.sleep(poll_interval)
+    
+    raise FabricApiError(f"⏱️ Timeout après {max_wait_seconds}s")
+
+def fix_definition_pbir(
+    parts: List[Dict[str, str]], 
+    workspace_id: str,
+    token: str
+) -> tuple[List[Dict[str, str]], str]:
+    """
+    Remplace byPath par byPath:null dans definition.pbir.
+    Retourne (parts_modifiés, dataset_id) pour rebind ultérieur.
+    """
+    # Récupérer le nom du workspace
+    workspace_name = get_workspace_name_from_id(workspace_id, token)
+    print(f"🔧 Workspace name: {workspace_name}")
+    
+    fixed_parts = []
+    dataset_id = None
+    
+    for part in parts:
+        if part["path"] == "definition.pbir":
+            # Décoder le contenu
+            content = base64.b64decode(part["payload"]).decode("utf-8")
+            pbir = json.loads(content)
+            
+            # Extraire le nom du dataset depuis l'ancien byPath (si présent)
+            dataset_name = None
+            if "datasetReference" in pbir:
+                if "byPath" in pbir["datasetReference"]:
+                    old_path = pbir["datasetReference"]["byPath"].get("path", "")
+                    if old_path:
+                        # Ex: "../Mon_Dataset.SemanticModel" -> "Mon_Dataset"
+                        dataset_name = old_path.split("/")[-1].replace(".SemanticModel", "")
+            
+            # Si pas de dataset trouvé, essayer de deviner depuis le dossier
+            if not dataset_name:
+                print("⚠️ Impossible d'extraire le nom du dataset depuis byPath")
+                dataset_name = "DATASET_NAME_PLACEHOLDER"
+            
+            # 🔑 CHERCHER LE GUID DU DATASET DANS LE WORKSPACE
+            print(f"🔍 Recherche du dataset '{dataset_name}' dans le workspace...")
+            try:
+                items = list_items_by_type(workspace_id, "SemanticModel", token)
+                for item in items:
+                    if item.get("displayName") == dataset_name:
+                        dataset_id = item["id"]
+                        print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
+                        break
+                
+                if not dataset_id:
+                    print(f"❌ Dataset '{dataset_name}' introuvable dans le workspace!")
+                    print(f"📋 Datasets disponibles:")
+                    for item in items:
+                        print(f"   - {item.get('displayName')} (id={item.get('id')})")
+            except Exception as e:
+                print(f"⚠️ Erreur lors de la recherche du dataset: {e}")
+            
+            print(f"🔧 Configuration dataset reference")
+            print(f"   Dataset name: {dataset_name}")
+            if dataset_id:
+                print(f"   Dataset GUID: {dataset_id}")
+            print(f"   Workspace: {workspace_name}")
+            
+            # Supprimer complètement datasetReference pour créer un rapport sans dataset
+            # Fabric refuse byPath:null, donc on enlève tout
+            if "datasetReference" in pbir:
+                del pbir["datasetReference"]
+            
+            print(f"⚠️ datasetReference supprimé (rapport créé sans dataset)")
+            if dataset_id:
+                print(f"💡 Sera lié au dataset après création via rebindReport API")
+            
+            # Ré-encoder
+            new_content = json.dumps(pbir, indent=2)
+            new_b64 = base64.b64encode(new_content.encode("utf-8")).decode("ascii")
+            
+            fixed_parts.append({
+                "path": part["path"],
+                "payload": new_b64,
+                "payloadType": "InlineBase64"
+            })
+        else:
+            fixed_parts.append(part)
+    
+    return fixed_parts, dataset_id
+
+def create_or_update_item_from_folder(
+    workspace_id: str,
+    folder: str,
+    item_type: str,
+    token: str,
+) -> str:
+    display_name = os.path.basename(folder)
+    if "." in display_name:
+        display_name = display_name.split(".", 1)[0]
+
+    print(f"\n{'='*60}")
+    print(f"📦 Publishing {item_type}: {display_name}")
+    print(f"   Folder: {folder}")
+    print(f"{'='*60}")
+
+    parts = build_definition_parts_from_folder(folder)
+    # 🔧 CORRECTION AUTOMATIQUE POUR LES REPORTS
+    dataset_id_for_rebind = None
+    if item_type == "Report":
+        parts, dataset_id_for_rebind = fix_definition_pbir(parts, workspace_id, token)
+        print("Modified definition.pbir to include reference to semantic model")
+    print(f"   📄 {len(parts)} fichiers encodés")
+    
+    # Afficher les fichiers pour debug
+    for part in parts[:5]:  # Limiter à 5 pour pas polluer
+        print(f"      - {part['path']}")
+    if len(parts) > 5:
+        print(f"      ... et {len(parts) - 5} autres fichiers")
+    
+    definition = {"parts": parts}
+
+    # Check if exists
+    print(f"\n🔍 Vérification si '{display_name}' existe déjà...")
+    existing_items = list_items_by_type(workspace_id, item_type, token)
+    item_id = None
+    for it in existing_items:
+        if it.get("displayName") == display_name:
+            item_id = it["id"]
+            break
+
+    # -------------------------
+    # CASE 1 : CREATE
+    # -------------------------
+    if item_id is None:
+        print(f"➕ Item n'existe pas, création en cours...")
+        
+        body = {
+            "displayName": display_name,
+            "type": item_type,
+            "definition": definition,
+        }
+
+        resp = fabric_request(
+            "POST",
+            f"workspaces/{workspace_id}/items",
+            token,
+            json=body,
+        )
+
+        status_code = resp.status_code
+        print(f"\n📡 Réponse Fabric: HTTP {status_code}")
+        
+        # AFFICHER TOUS LES HEADERS POUR DEBUG
+        print(f"📋 Headers de réponse:")
+        for header, value in resp.headers.items():
+            print(f"   {header}: {value}")
+
+        # Cas 1: Création synchrone réussie (201)
+        if status_code == 201:
+            try:
+                item = resp.json()
+                item_id = item["id"]
+                print(f"✅ Créé immédiatement (201) - id={item_id}")
+                # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
+                # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
+                if item_type == "Report" and dataset_id_for_rebind and item_id:
+                    try:
+                        rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
+                    except Exception as e:
+                        print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
+                        print(f"   Tu devras le faire manuellement dans Fabric")
+                return item_id
+            except Exception as e:
+                print(f"❌ Erreur parsing JSON: {e}")
+                print(f"Raw response: {resp.text}")
+                raise FabricApiError("Failed to parse 201 response")
+        
+        # Cas 2: Création asynchrone (202)
+        elif status_code == 202:
+            print("⏳ Création asynchrone (202 Accepted)")
+            
+            # Chercher l'URL de l'opération
+            location = resp.headers.get("Location")
+            retry_after = resp.headers.get("Retry-After", "5")
+            
+            if location:
+                print(f"   Location header trouvé: {location}")
+                print(f"   Retry-After: {retry_after}s")
+                
+                try:
+                    # Attendre un peu avant de commencer le polling
+                    time.sleep(int(retry_after))
+                    
+                    # Suivre l'opération
+                    operation_result = wait_for_long_running_operation(location, token)
+                    
+                    # Récupérer l'item créé
+                    print("\n🔍 Recherche de l'item créé...")
+                    time.sleep(3)  # Attendre que l'item soit bien visible
+                    
+                    items = list_items_by_type(workspace_id, item_type, token)
+                    for it in items:
+                        if it.get("displayName") == display_name:
+                            item_id = it["id"]
+                            print(f"✅ Item trouvé après opération async - id={item_id}")
+                            # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
+                            # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
+                            if item_type == "Report" and dataset_id_for_rebind and item_id:
+                                try:
+                                    rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
+                                except Exception as e:
+                                    print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
+                                    print(f"   Tu devras le faire manuellement dans Fabric")
+                            return item_id
+                    
+                    raise FabricApiError(
+                        f"Opération réussie mais item '{display_name}' introuvable"
+                    )
+                    
+                except Exception as e:
+                    print(f"\n❌ Erreur lors du suivi de l'opération: {e}")
+                    print("📋 Contenu de la réponse 202:")
+                    print(resp.text)
+                    raise
+            
+            else:
+                print("⚠️ PAS DE LOCATION HEADER!")
+                print("📋 Contenu de la réponse 202:")
+                print(resp.text)
+                
+                # Fallback: polling manuel
+                print("\n⚠️ Fallback: polling manuel des items...")
+                return _wait_for_item_manual_polling(
+                    workspace_id, display_name, item_type, token
+                )
+        
+        # Cas 3: Code inattendu
+        else:
+            print(f"❌ Code HTTP inattendu: {status_code}")
+            print(f"📋 Réponse complète:")
+            print(resp.text)
+            raise FabricApiError(
+                f"Unexpected status code {status_code} for item creation"
+            )
+
+    # -------------------------
+    # CASE 2 : UPDATE
+    # -------------------------
+    print(f"🔄 Item existe déjà (id={item_id}), mise à jour...")
+    
+    body = {"definition": definition}
+
+    resp = fabric_request(
+        "POST",
+        f"workspaces/{workspace_id}/items/{item_id}/updateDefinition?updateMetadata=false",
+        token,
+        json=body,
     )
 
-    return path_staging
+    status_code = resp.status_code
+    print(f"📡 Réponse mise à jour: HTTP {status_code}")
+
+    if status_code == 200:
+        print(f"✅ Mis à jour immédiatement (200)")
+        return item_id
+    
+    elif status_code == 202:
+        location = resp.headers.get("Location")
+        if location:
+            wait_for_long_running_operation(location, token)
+        else:
+            print("⚠️ Pas de Location, attente arbitraire de 10s...")
+            time.sleep(10)
+        
+        print(f"✅ Mis à jour (async)")
+        # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
+        # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
+        if item_type == "Report" and dataset_id_for_rebind and item_id:
+            try:
+                rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
+            except Exception as e:
+                print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
+                print(f"   Tu devras le faire manuellement dans Fabric")
+        return item_id
+    
+    else:
+        print(f"❌ Mise à jour échouée: {status_code}")
+        print(resp.text)
+        raise FabricApiError(f"Update failed with status {status_code}")
+
+
+def _wait_for_item_manual_polling(
+    workspace_id: str,
+    display_name: str,
+    item_type: str,
+    token: str,
+    max_attempts: int = 60,
+) -> str:
+    """
+    Fallback: polling manuel si pas de Location header.
+    """
+    print(f"⏳ Attente manuelle de la création (max {max_attempts * 5}s)...")
+    
+    for attempt in range(1, max_attempts + 1):
+        time.sleep(5)
+        
+        try:
+            items = list_items_by_type(workspace_id, item_type, token)
+            for it in items:
+                if it.get("displayName") == display_name:
+                    item_id = it["id"]
+                    print(f"✅ Item trouvé après {attempt * 5}s (id={item_id})")
+                    return item_id
+        except Exception as e:
+            print(f"   ⚠️ Erreur lors du polling (tentative {attempt}): {e}")
+        
+        if attempt % 6 == 0:  # Log toutes les 30s
+            print(f"   Toujours en attente... ({attempt * 5}s écoulées)")
+    
+    # Timeout - afficher les items existants pour debug
+    print(f"\n❌ TIMEOUT après {max_attempts * 5}s")
+    print(f"🔍 Items {item_type} actuels dans le workspace:")
+    try:
+        items = list_items_by_type(workspace_id, item_type, token)
+        if not items:
+            print("   (aucun item)")
+        for it in items:
+            print(f"   - {it.get('displayName')} (id={it.get('id')})")
+    except Exception as e:
+        print(f"   Erreur lors de la récupération des items: {e}")
+    
+    raise FabricApiError(
+        f"Timeout: {item_type} '{display_name}' non créé. "
+        "Vérifier les logs Fabric et les permissions du Service Principal."
+    )
