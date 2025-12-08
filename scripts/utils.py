@@ -436,17 +436,17 @@ def deploy_report_via_fabric_workaround(
             with open(full_path, "rb") as f:
                 content = f.read()
             
-            # Si c'est definition.pbir, on le modifie pour utiliser byConnection avec juste le workspace
+            # Si c'est definition.pbir, on le modifie pour utiliser byConnection avec le dataset GUID
             if rel_path == "definition.pbir":
                 pbir_modified = json.loads(content.decode('utf-8'))
-                # Utiliser une référence minimale qui sera corrigée par rebind après
+                # Utiliser le GUID du dataset directement dans connectionString
                 pbir_modified["datasetReference"] = {
                     "byConnection": {
-                        "connectionString": ""
+                        "connectionString": f"semanticModelId={dataset_id}"
                     }
                 }
                 content = json.dumps(pbir_modified, indent=2).encode('utf-8')
-                print(f"   ✏️ definition.pbir modifié (référence vide temporaire)")
+                print(f"   ✏️ definition.pbir modifié avec dataset GUID: {dataset_id}")
             
             b64 = base64.b64encode(content).decode("ascii")
             parts.append({
