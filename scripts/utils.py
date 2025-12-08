@@ -254,7 +254,7 @@ def fix_definition_pbir(
 ) -> List[Dict[str, str]]:
     """
     Remplace byPath par byConnection avec le format correct dans definition.pbir.
-    Utilise workspace_id pour construire la connectionString.
+    Utilise l'ID GUID du dataset au lieu du nom.
     """
     # Récupérer le nom du workspace
     workspace_name = get_workspace_name_from_id(workspace_id, token)
@@ -279,18 +279,39 @@ def fix_definition_pbir(
             
             # Si pas de dataset trouvé, essayer de deviner depuis le dossier
             if not dataset_name:
-                # Fallback: chercher un .SemanticModel dans le workspace
                 print("⚠️ Impossible d'extraire le nom du dataset depuis byPath")
                 dataset_name = "DATASET_NAME_PLACEHOLDER"
             
+            # 🔑 CHERCHER LE GUID DU DATASET DANS LE WORKSPACE
+            print(f"🔍 Recherche du dataset '{dataset_name}' dans le workspace...")
+            dataset_guid = None
+            try:
+                items = list_items_by_type(workspace_id, "SemanticModel", token)
+                for item in items:
+                    if item.get("displayName") == dataset_name:
+                        dataset_guid = item["id"]
+                        print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_guid})")
+                        break
+                
+                if not dataset_guid:
+                    print(f"❌ Dataset '{dataset_name}' introuvable dans le workspace!")
+                    print(f"📋 Datasets disponibles:")
+                    for item in items:
+                        print(f"   - {item.get('displayName')} (id={item.get('id')})")
+                    raise ValueError(f"Dataset '{dataset_name}' not found in workspace")
+            except Exception as e:
+                print(f"❌ Erreur lors de la recherche du dataset: {e}")
+                raise
+            
             print(f"🔧 Conversion byPath -> byConnection")
-            print(f"   Dataset: {dataset_name}")
+            print(f"   Dataset name: {dataset_name}")
+            print(f"   Dataset GUID: {dataset_guid}")
             print(f"   Workspace: {workspace_name}")
             
-            # Remplacer par le format correct
+            # Remplacer par le format correct avec le GUID
             pbir["datasetReference"] = {
                 "byConnection": {
-                    "connectionString": f"Data Source=powerbi://api.powerbi.com/v1.0/myorg/{workspace_name};Initial Catalog={dataset_name}"
+                    "connectionString": f"Data Source=powerbi://api.powerbi.com/v1.0/myorg/{workspace_name};Initial Catalog={dataset_guid}"
                 }
             }
             
