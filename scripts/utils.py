@@ -337,7 +337,8 @@ def fix_definition_pbir(
             
             print(f"🔧 Configuration dataset reference")
             print(f"   Dataset name: {dataset_name}")
-            print(f"   Dataset GUID: {dataset_guid}")
+            if dataset_id:
+                print(f"   Dataset GUID: {dataset_id}")
             print(f"   Workspace: {workspace_name}")
             
             # Seul format accepté par l'API Fabric: byPath null
@@ -347,7 +348,8 @@ def fix_definition_pbir(
             }
             
             print(f"⚠️ Rapport créé avec byPath:null (pas de lien dataset)")
-            print(f"💡 À relier après création via l'API rebindReport")
+            if dataset_id:
+                print(f"💡 Sera lié au dataset après création via rebindReport API")
             
             # Ré-encoder
             new_content = json.dumps(pbir, indent=2)
