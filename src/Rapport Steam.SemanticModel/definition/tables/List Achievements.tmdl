@@ -1,0 +1,157 @@
+table 'List Achievements'
+	lineageTag: de18a783-30e8-4324-97f8-73ffb07d431a
+
+	measure 'Cumul Achievement temp' =
+			CALCULATE (
+			    SUM ( 'List Achievements'[Attribute:closed] ),
+			    FILTER (
+			        ALL ('List Achievements'[DateUnlock]),
+			        'List Achievements'[DateUnlock] <= MAX('List Achievements'[DateUnlock]
+			         )
+			    )
+			)
+		formatString: 0
+		lineageTag: b247fc67-2263-435a-b86a-a1355efed556
+
+	measure 'Last Achievement Unlocked ID' =
+			
+			VAR dateMax = [Last Achievement Unlock Max Date]
+			RETURN
+			CALCULATE([Nom Achievement],FILTER('List Achievements','List Achievements'[DateUnlock] =dateMax))
+		lineageTag: 3987378e-a4dc-45f6-a0cc-83def5d93ed5
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Last Achievement Unlock Max Date' = MAX('List Achievements'[DateUnlock])
+		formatString: General Date
+		lineageTag: efb2e7c6-20e6-4bc0-a3b9-a77281ec5f5a
+
+	measure 'Nom Achievement' = MAX('List Achievements'[apiname])
+		lineageTag: 17f48cf7-fc23-4c65-9d08-2c2db242ba28
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Most obtained achievement rate' = MAX('Ref Achievements'[percent])
+		lineageTag: b957531e-e3f0-49d5-b95b-e6435b5bfa59
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Least obtained achievement rate' = MIN('Ref Achievements'[percent])
+		lineageTag: d1a39f72-a45f-443c-8541-fe09fe709976
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Least obtained achievement ID' =
+			
+			VAR Rate = [Least obtained achievement rate]
+			RETURN
+			CALCULATE(MAX('Ref Achievements'[apiname]),'Ref Achievements'[percent] = Rate)
+		lineageTag: 2eac30f3-7ff0-4a77-8891-e7a76dfa01ec
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Unobtained most common achievement' =
+			
+			VAR Rate = [Unobtained most common achievement rate]
+			RETURN
+			CALCULATE(MAX('Ref Achievements'[apiname]),'Ref Achievements'[percent] = Rate)
+		lineageTag: 83fde0bc-466f-45a5-b8d3-97d1ca52bdcb
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Obtained rarest achievement' =
+			
+			VAR Rate = [Obtained Rarest achievement rate]
+			RETURN
+			CALCULATE(MAX('Ref Achievements'[apiname]),'Ref Achievements'[percent] = Rate)
+		lineageTag: c8c25fea-d466-45cf-99cc-0d8ee0bfad45
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column steamID64
+		dataType: string
+		lineageTag: 4a803a7f-a3ea-4709-89b1-9914ab96d961
+		summarizeBy: none
+		sourceColumn: steamID64
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column hoursPlayed
+		dataType: string
+		lineageTag: ef900ac1-eff7-4bcb-ab9b-344509939daf
+		summarizeBy: none
+		sourceColumn: hoursPlayed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column apiname
+		dataType: string
+		lineageTag: 18ac8d92-d91a-4b61-a518-83a4db3e5900
+		summarizeBy: none
+		sourceColumn: apiname
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column unlockTimestamp
+		dataType: int64
+		formatString: 0
+		lineageTag: cabad18f-4b6a-4b4f-b15d-ee8438c3c339
+		summarizeBy: sum
+		sourceColumn: unlockTimestamp
+
+		annotation SummarizationSetBy = Automatic
+
+	column Attribute:closed
+		dataType: int64
+		formatString: 0
+		lineageTag: e9a23179-314d-4a96-81ba-e78889fad0c2
+		summarizeBy: sum
+		sourceColumn: Attribute:closed
+
+		annotation SummarizationSetBy = Automatic
+
+	column DateUnlock
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 7bbcf2db-56d9-437c-89e4-846be2712828
+		summarizeBy: none
+		sourceColumn: DateUnlock
+
+		variation Variation
+			isDefault
+			relationship: cfe53df3-eee7-4b6c-ad4e-75db8c0219d6
+			defaultHierarchy: LocalDateTable_84294eb6-2f85-4580-a308-71af16a509fa.'Hiérarchie de dates'
+
+		annotation SummarizationSetBy = Automatic
+
+	column Name
+		dataType: string
+		lineageTag: 5c07d14e-aced-47df-9ed5-38e47b3fe74d
+		summarizeBy: none
+		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'List Achievements-914f9241-3e9f-4ee3-b8f8-ca263edff90f' = m
+		mode: import
+		source =
+				let
+				    Source = Table.Combine({#"Rom Achievements", #"Ben Achievements", #"Pierre Achievements"}),
+				    #"Type modifié" = Table.TransformColumnTypes(Source,{{"Attribute:closed", Int64.Type}})
+				in
+				    #"Type modifié"
+
+	annotation PBI_QueryRelationships = {"columnCount":7,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/List Achievements/Source.{steamID64,0}","Section1/List Achievements/Source.{hoursPlayed,1}","Section1/List Achievements/Source.{apiname,2}","Section1/List Achievements/Source.{unlockTimestamp,3}","Section1/List Achievements/Type modifié.{Attribute:closed,4}","Section1/List Achievements/Source.{DateUnlock,5}","Section1/List Achievements/Source.{Name,6}"],"ColumnCount":7,"KeyColumnNames":[],"ColumnIdentities":["Section1/List Achievements/Source.{steamID64,0}","Section1/List Achievements/Source.{hoursPlayed,1}","Section1/List Achievements/Source.{apiname,2}","Section1/List Achievements/Source.{unlockTimestamp,3}","Section1/List Achievements/Type modifié.{Attribute:closed,4}","Section1/List Achievements/Source.{DateUnlock,5}","Section1/List Achievements/Source.{Name,6}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
