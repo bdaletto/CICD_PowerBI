@@ -133,6 +133,13 @@ def list_items_by_type(
     data = resp.json()
     return data.get("value", data.get("items", []))
 
+def get_workspace_name_from_id(workspace_id: str, token: str) -> str:
+    """
+    Récupère le nom d'un workspace à partir de son ID.
+    """
+    resp = fabric_request("GET", f"workspaces/{workspace_id}", token)
+    workspace = resp.json()
+    return workspace.get("displayName", workspace_id)
 
 def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
     """
@@ -240,6 +247,66 @@ def wait_for_long_running_operation(
     
     raise FabricApiError(f"⏱️ Timeout après {max_wait_seconds}s")
 
+def fix_definition_pbir(
+    parts: List[Dict[str, str]], 
+    workspace_id: str,
+    token: str
+) -> List[Dict[str, str]]:
+    """
+    Remplace byPath par byConnection avec le format correct dans definition.pbir.
+    Utilise workspace_id pour construire la connectionString.
+    """
+    # Récupérer le nom du workspace
+    workspace_name = get_workspace_name_from_id(workspace_id, token)
+    print(f"🔧 Workspace name: {workspace_name}")
+    
+    fixed_parts = []
+    
+    for part in parts:
+        if part["path"] == "definition.pbir":
+            # Décoder le contenu
+            content = base64.b64decode(part["payload"]).decode("utf-8")
+            pbir = json.loads(content)
+            
+            # Extraire le nom du dataset depuis l'ancien byPath (si présent)
+            dataset_name = None
+            if "datasetReference" in pbir:
+                if "byPath" in pbir["datasetReference"]:
+                    old_path = pbir["datasetReference"]["byPath"].get("path", "")
+                    if old_path:
+                        # Ex: "../Mon_Dataset.SemanticModel" -> "Mon_Dataset"
+                        dataset_name = old_path.split("/")[-1].replace(".SemanticModel", "")
+            
+            # Si pas de dataset trouvé, essayer de deviner depuis le dossier
+            if not dataset_name:
+                # Fallback: chercher un .SemanticModel dans le workspace
+                print("⚠️ Impossible d'extraire le nom du dataset depuis byPath")
+                dataset_name = "DATASET_NAME_PLACEHOLDER"
+            
+            print(f"🔧 Conversion byPath -> byConnection")
+            print(f"   Dataset: {dataset_name}")
+            print(f"   Workspace: {workspace_name}")
+            
+            # Remplacer par le format correct
+            pbir["datasetReference"] = {
+                "byConnection": {
+                    "connectionString": f"Data Source=powerbi://api.powerbi.com/v1.0/myorg/{workspace_name};Initial Catalog={dataset_name}"
+                }
+            }
+            
+            # Ré-encoder
+            new_content = json.dumps(pbir, indent=2)
+            new_b64 = base64.b64encode(new_content.encode("utf-8")).decode("ascii")
+            
+            fixed_parts.append({
+                "path": part["path"],
+                "payload": new_b64,
+                "payloadType": "InlineBase64"
+            })
+        else:
+            fixed_parts.append(part)
+    
+    return fixed_parts
 
 def create_or_update_item_from_folder(
     workspace_id: str,
@@ -257,6 +324,9 @@ def create_or_update_item_from_folder(
     print(f"{'='*60}")
 
     parts = build_definition_parts_from_folder(folder)
+    if item_type == "Report":
+        parts = fix_definition_pbir(parts, workspace_id, token)
+        print("Modified definition.pbir to include reference to semantic model")
     print(f"   📄 {len(parts)} fichiers encodés")
     
     # Afficher les fichiers pour debug
