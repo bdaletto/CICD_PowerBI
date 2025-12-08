@@ -3,9 +3,12 @@
   "version": "4.0",
   "datasetReference": {
     "byConnection": {
-      "workspaceId": "ec64ffb0-48df-442d-b169-1fec5e64ba29",
-      "datasetId": "34d752d6-58c7-4975-b47a-3fb11bc18093",
-      "datasetDisplayName": "Modèle_Sémantique_dmManage"
+      "connectionString": null,
+      "pbiServiceModelId": null,
+      "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+      "pbiModelDatabaseName": "Modèle_Sémantique_dmManage",
+      "name": "EntityDataSource",
+      "connectionType": "pbiServiceXmlaStyleLive"
     }
   }
 }
