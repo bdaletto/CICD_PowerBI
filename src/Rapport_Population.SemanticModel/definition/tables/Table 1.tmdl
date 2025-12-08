@@ -1,0 +1,51 @@
+table 'Table 1'
+	lineageTag: ad5186db-bd69-4323-97c3-41d42a4549d9
+
+	column 'Rang (2023)'
+		dataType: string
+		lineageTag: 5024c187-3817-4b09-a042-4cb2d6935b2e
+		summarizeBy: none
+		sourceColumn: Rang (2023)
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Pays ou territoire'
+		dataType: string
+		lineageTag: 5e8577c9-8130-41d9-8bd2-f26f97ce1533
+		summarizeBy: none
+		sourceColumn: Pays ou territoire
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Population au 1er juillet 2023'
+		dataType: string
+		lineageTag: 02647a9e-0e65-46b8-9393-f2191399b2a7
+		summarizeBy: none
+		sourceColumn: Population au 1er juillet 2023
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Population projetée au 1er janvier 2026'
+		dataType: string
+		lineageTag: 1bf22c78-b643-4d7f-9456-f1c7d361b6f8
+		summarizeBy: none
+		sourceColumn: Population projetée au 1er janvier 2026
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'Table 1' = m
+		mode: import
+		source =
+				let
+				    Source = Web.BrowserContents("https://fr.wikipedia.org/wiki/Liste_des_pays_par_population"),
+				    #"Table extraite à partir de code Html" = Html.Table(Source, {{"Column1", "TABLE.sticky-header-multi.wikitable.sortable.alternance > * > TR > :nth-child(1)"}, {"Column2", "TABLE.sticky-header-multi.wikitable.sortable.alternance > * > TR > :nth-child(2)"}, {"Column3", "TABLE.sticky-header-multi.wikitable.sortable.alternance > * > TR > :nth-child(3)"}, {"Column4", "TABLE.sticky-header-multi.wikitable.sortable.alternance > * > TR > :nth-child(4)"}}, [RowSelector="TABLE.sticky-header-multi.wikitable.sortable.alternance > * > TR"]),
+				    #"Type modifié" = Table.TransformColumnTypes(#"Table extraite à partir de code Html",{{"Column1", type text}, {"Column2", type text}, {"Column3", type text}, {"Column4", type text}}),
+				    #"En-têtes promus" = Table.PromoteHeaders(#"Type modifié", [PromoteAllScalars=true]),
+				    #"Type modifié1" = Table.TransformColumnTypes(#"En-têtes promus",{{"Rang (2023)", type text}, {"Pays ou territoire", type text}, {"Population au 1er juillet 2023", type text}, {"Population projetée au 1er janvier 2026", type text}})
+				in
+				    #"Type modifié1"
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
