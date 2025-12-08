@@ -28,7 +28,7 @@ on:
       workspace:
         type: string
         required: true
-        default: 'BDA_Test_DEV'
+        default: 'BDA_Test_Dev'
       capacity:
         type: string
         required: false
@@ -41,7 +41,7 @@ on:
 env:        
   # If its running on schedule deploys to PRD, otherwise goes to DEV
   environment: ${{ github.event.inputs.environment == '' && (github.event_name == 'schedule' && 'prd' || 'dev') || github.event.inputs.environment }}
-  workspace: ${{ github.event.inputs.workspace == '' && 'BDA_Test_DEV' || github.event.inputs.workspace }}
+  workspace: ${{ github.event.inputs.workspace == '' && 'BDA_Test_Dev' || github.event.inputs.workspace }}
   capacity: ${{ github.event.inputs.capacity == '' && vars.FABRIC_CAPACITY || github.event.inputs.capacity }}
   admin_upns: ${{ github.event.inputs.admin_upns == '' && vars.FABRIC_ADMIN_UPNS || github.event.inputs.admin_upns }}  
 
