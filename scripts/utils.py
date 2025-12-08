@@ -141,6 +141,40 @@ def get_workspace_name_from_id(workspace_id: str, token: str) -> str:
     workspace = resp.json()
     return workspace.get("displayName", workspace_id)
 
+def rebind_report_to_dataset(
+    workspace_id: str,
+    report_id: str,
+    dataset_id: str,
+    token: str
+) -> None:
+    """
+    Relie un rapport à un dataset via l'API Power BI.
+    Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/reports/rebind-report-in-group
+    """
+    print(f"🔗 Liaison du rapport au dataset...")
+    print(f"   Report ID: {report_id}")
+    print(f"   Dataset ID: {dataset_id}")
+    
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/Rebind"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "datasetId": dataset_id
+    }
+    
+    resp = requests.post(url, headers=headers, json=body)
+    
+    if resp.ok:
+        print(f"✅ Rapport lié au dataset avec succès")
+    else:
+        print(f"⚠️ Échec du rebind: HTTP {resp.status_code}")
+        print(f"   {resp.text}")
+        # Ne pas lever d'exception, juste avertir
+        print(f"   Le rapport a été créé mais n'est pas lié au dataset")
+
+
 def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
     """
     Construit la liste des 'parts' pour un Item Definition à partir d'un dossier PBIP :
@@ -251,16 +285,17 @@ def fix_definition_pbir(
     parts: List[Dict[str, str]], 
     workspace_id: str,
     token: str
-) -> List[Dict[str, str]]:
+) -> tuple[List[Dict[str, str]], str]:
     """
-    Remplace byPath par byConnection avec le format correct dans definition.pbir.
-    Utilise l'ID GUID du dataset au lieu du nom.
+    Remplace byPath par byPath:null dans definition.pbir.
+    Retourne (parts_modifiés, dataset_id) pour rebind ultérieur.
     """
     # Récupérer le nom du workspace
     workspace_name = get_workspace_name_from_id(workspace_id, token)
     print(f"🔧 Workspace name: {workspace_name}")
     
     fixed_parts = []
+    dataset_id = None
     
     for part in parts:
         if part["path"] == "definition.pbir":
@@ -284,36 +319,35 @@ def fix_definition_pbir(
             
             # 🔑 CHERCHER LE GUID DU DATASET DANS LE WORKSPACE
             print(f"🔍 Recherche du dataset '{dataset_name}' dans le workspace...")
-            dataset_guid = None
             try:
                 items = list_items_by_type(workspace_id, "SemanticModel", token)
                 for item in items:
                     if item.get("displayName") == dataset_name:
-                        dataset_guid = item["id"]
-                        print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_guid})")
+                        dataset_id = item["id"]
+                        print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
                         break
                 
-                if not dataset_guid:
+                if not dataset_id:
                     print(f"❌ Dataset '{dataset_name}' introuvable dans le workspace!")
                     print(f"📋 Datasets disponibles:")
                     for item in items:
                         print(f"   - {item.get('displayName')} (id={item.get('id')})")
-                    raise ValueError(f"Dataset '{dataset_name}' not found in workspace")
             except Exception as e:
-                print(f"❌ Erreur lors de la recherche du dataset: {e}")
-                raise
+                print(f"⚠️ Erreur lors de la recherche du dataset: {e}")
             
-            print(f"🔧 Conversion byPath -> byConnection")
+            print(f"🔧 Configuration dataset reference")
             print(f"   Dataset name: {dataset_name}")
             print(f"   Dataset GUID: {dataset_guid}")
             print(f"   Workspace: {workspace_name}")
             
-            # Remplacer par le format correct avec le GUID
+            # Seul format accepté par l'API Fabric: byPath null
+            # Le rapport sera créé sans lien, à relier après via rebindReport API
             pbir["datasetReference"] = {
-                "byConnection": {
-                    "connectionString": f"Data Source=powerbi://api.powerbi.com/v1.0/myorg/{workspace_name};Initial Catalog={dataset_guid}"
-                }
+                "byPath": None
             }
+            
+            print(f"⚠️ Rapport créé avec byPath:null (pas de lien dataset)")
+            print(f"💡 À relier après création via l'API rebindReport")
             
             # Ré-encoder
             new_content = json.dumps(pbir, indent=2)
@@ -327,7 +361,7 @@ def fix_definition_pbir(
         else:
             fixed_parts.append(part)
     
-    return fixed_parts
+    return fixed_parts, dataset_id
 
 def create_or_update_item_from_folder(
     workspace_id: str,
@@ -345,8 +379,10 @@ def create_or_update_item_from_folder(
     print(f"{'='*60}")
 
     parts = build_definition_parts_from_folder(folder)
+    # 🔧 CORRECTION AUTOMATIQUE POUR LES REPORTS
+    dataset_id_for_rebind = None
     if item_type == "Report":
-        parts = fix_definition_pbir(parts, workspace_id, token)
+        parts, dataset_id_for_rebind = fix_definition_pbir(parts, workspace_id, token)
         print("Modified definition.pbir to include reference to semantic model")
     print(f"   📄 {len(parts)} fichiers encodés")
     
@@ -400,6 +436,14 @@ def create_or_update_item_from_folder(
                 item = resp.json()
                 item_id = item["id"]
                 print(f"✅ Créé immédiatement (201) - id={item_id}")
+                # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
+                # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
+                if item_type == "Report" and dataset_id_for_rebind and item_id:
+                    try:
+                        rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
+                    except Exception as e:
+                        print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
+                        print(f"   Tu devras le faire manuellement dans Fabric")
                 return item_id
             except Exception as e:
                 print(f"❌ Erreur parsing JSON: {e}")
@@ -434,6 +478,14 @@ def create_or_update_item_from_folder(
                         if it.get("displayName") == display_name:
                             item_id = it["id"]
                             print(f"✅ Item trouvé après opération async - id={item_id}")
+                            # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
+                            # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
+                            if item_type == "Report" and dataset_id_for_rebind and item_id:
+                                try:
+                                    rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
+                                except Exception as e:
+                                    print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
+                                    print(f"   Tu devras le faire manuellement dans Fabric")
                             return item_id
                     
                     raise FabricApiError(
@@ -496,6 +548,14 @@ def create_or_update_item_from_folder(
             time.sleep(10)
         
         print(f"✅ Mis à jour (async)")
+        # APRÈS CRÉATION RÉUSSIE DU RAPPORT:
+        # Si c'est un rapport et qu'on a un dataset_id, faire le rebind
+        if item_type == "Report" and dataset_id_for_rebind and item_id:
+            try:
+                rebind_report_to_dataset(workspace_id, item_id, dataset_id_for_rebind, token)
+            except Exception as e:
+                print(f"⚠️ Impossible de lier le rapport au dataset: {e}")
+                print(f"   Tu devras le faire manuellement dans Fabric")
         return item_id
     
     else:
