@@ -384,26 +384,29 @@ def rebind_report_to_dataset(
         print(f"   Le rapport a été créé mais n'est pas lié au dataset")
 
 
-def deploy_report_via_pbix(
+def deploy_report_via_fabric_workaround(
     workspace_id: str,
     pbip_folder: str,
     token: str,
 ) -> str:
     """
-    Déploie un rapport depuis un dossier PBIP via l'API Power BI.
-    Contourne les limitations de l'API Fabric Items pour les rapports.
+    Déploie un rapport en contournant le problème de definition.pbir.
+    Stratégie: Supprimer temporairement la référence au dataset, créer le rapport vide,
+    puis le relier au dataset via rebind.
     """
     report_name = os.path.basename(pbip_folder).replace(".Report", "")
     
     # Chercher le dataset associé depuis definition.pbir
     dataset_id = None
+    dataset_name = None
+    pbir_path = os.path.join(pbip_folder, "definition.pbir")
+    
     try:
-        pbir_path = os.path.join(pbip_folder, "definition.pbir")
         if os.path.exists(pbir_path):
             with open(pbir_path, 'r', encoding='utf-8') as f:
-                pbir = json.load(f)
-                if "datasetReference" in pbir and "byPath" in pbir["datasetReference"]:
-                    path = pbir["datasetReference"]["byPath"].get("path", "")
+                pbir_original = json.load(f)
+                if "datasetReference" in pbir_original and "byPath" in pbir_original["datasetReference"]:
+                    path = pbir_original["datasetReference"]["byPath"].get("path", "")
                     if path:
                         dataset_name = path.split("/")[-1].replace(".SemanticModel", "")
                         print(f"🔍 Recherche du dataset '{dataset_name}'...")
@@ -414,30 +417,107 @@ def deploy_report_via_pbix(
                                 print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
                                 break
     except Exception as e:
-        print(f"⚠️ Impossible de trouver le dataset: {e}")
+        print(f"⚠️ Erreur lors de la recherche du dataset: {e}")
     
-    # 1. Créer un .pbix temporaire
-    pbix_path = create_pbix_from_pbip(pbip_folder)
+    if not dataset_id:
+        print(f"❌ Impossible de déployer le rapport sans dataset")
+        print(f"   Assure-toi que le SemanticModel '{dataset_name}' existe dans le workspace")
+        raise FabricApiError(f"Dataset '{dataset_name}' not found")
     
-    try:
-        # 2. Uploader via Power BI API
-        report_id = upload_pbix_via_powerbi_api(
-            workspace_id=workspace_id,
-            pbix_path=pbix_path,
-            report_name=report_name,
-            token=token,
+    # Construire les parts en modifiant temporairement definition.pbir
+    print(f"🔧 Modification temporaire de definition.pbir pour contourner les limitations...")
+    parts = []
+    
+    for root, _, files in os.walk(pbip_folder):
+        for filename in files:
+            full_path = os.path.join(root, filename)
+            rel_path = os.path.relpath(full_path, pbip_folder).replace("\\", "/")
+            
+            with open(full_path, "rb") as f:
+                content = f.read()
+            
+            # Si c'est definition.pbir, on le modifie pour utiliser byConnection avec juste le workspace
+            if rel_path == "definition.pbir":
+                pbir_modified = json.loads(content.decode('utf-8'))
+                # Utiliser une référence minimale qui sera corrigée par rebind après
+                pbir_modified["datasetReference"] = {
+                    "byConnection": {
+                        "connectionString": ""
+                    }
+                }
+                content = json.dumps(pbir_modified, indent=2).encode('utf-8')
+                print(f"   ✏️ definition.pbir modifié (référence vide temporaire)")
+            
+            b64 = base64.b64encode(content).decode("ascii")
+            parts.append({
+                "path": rel_path,
+                "payload": b64,
+                "payloadType": "InlineBase64",
+            })
+    
+    definition = {"parts": parts}
+    
+    # Vérifier si le rapport existe déjà
+    print(f"\n🔍 Vérification si '{report_name}' existe déjà...")
+    existing_items = list_items_by_type(workspace_id, "Report", token)
+    item_id = None
+    for it in existing_items:
+        if it.get("displayName") == report_name:
+            item_id = it["id"]
+            break
+    
+    # Créer ou mettre à jour
+    if item_id is None:
+        print(f"➕ Création du rapport...")
+        body = {
+            "displayName": report_name,
+            "type": "Report",
+            "definition": definition,
+        }
+        
+        resp = fabric_request("POST", f"workspaces/{workspace_id}/items", token, json=body)
+        
+        if resp.status_code == 202:
+            location = resp.headers.get("Location")
+            if location:
+                retry_after = int(resp.headers.get("Retry-After", "5"))
+                time.sleep(retry_after)
+                wait_for_long_running_operation(location, token)
+                
+                # Trouver le rapport créé
+                time.sleep(3)
+                items = list_items_by_type(workspace_id, "Report", token)
+                for it in items:
+                    if it.get("displayName") == report_name:
+                        item_id = it["id"]
+                        break
+        elif resp.status_code == 201:
+            item = resp.json()
+            item_id = item["id"]
+    else:
+        print(f"🔄 Mise à jour du rapport existant...")
+        body = {"definition": definition}
+        resp = fabric_request(
+            "POST",
+            f"workspaces/{workspace_id}/items/{item_id}/updateDefinition?updateMetadata=false",
+            token,
+            json=body
         )
-        
-        # 3. Si dataset trouvé, rebind
-        if dataset_id:
-            rebind_report_to_dataset(workspace_id, report_id, dataset_id, token)
-        
-        return report_id
+        if resp.status_code == 202:
+            location = resp.headers.get("Location")
+            if location:
+                wait_for_long_running_operation(location, token)
     
-    finally:
-        if os.path.exists(pbix_path):
-            os.remove(pbix_path)
-            print(f"🗑️ Fichier temporaire supprimé")
+    if not item_id:
+        raise FabricApiError("Failed to create or find report")
+    
+    print(f"✅ Rapport créé/mis à jour: {report_name} (id={item_id})")
+    
+    # Maintenant rebinder au bon dataset
+    print(f"\n🔗 Liaison au dataset {dataset_name}...")
+    rebind_report_to_dataset(workspace_id, item_id, dataset_id, token)
+    
+    return item_id
 
 
 # ============================================================
@@ -461,8 +541,8 @@ def create_or_update_item_from_folder(
 
     # === TRAITEMENT SPÉCIAL POUR LES REPORTS ===
     if item_type == "Report":
-        print("🎯 Utilisation de l'API Power BI pour contourner les limitations Fabric")
-        return deploy_report_via_pbix(workspace_id, folder, token)
+        print("🎯 Déploiement rapport avec workaround Fabric")
+        return deploy_report_via_fabric_workaround(workspace_id, folder, token)
 
     # === TRAITEMENT NORMAL POUR LES AUTRES ITEMS (SemanticModel, etc.) ===
     parts = build_definition_parts_from_folder(folder)
