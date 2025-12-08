@@ -341,13 +341,12 @@ def fix_definition_pbir(
                 print(f"   Dataset GUID: {dataset_id}")
             print(f"   Workspace: {workspace_name}")
             
-            # Seul format accepté par l'API Fabric: byPath null
-            # Le rapport sera créé sans lien, à relier après via rebindReport API
-            pbir["datasetReference"] = {
-                "byPath": None
-            }
+            # Supprimer complètement datasetReference pour créer un rapport sans dataset
+            # Fabric refuse byPath:null, donc on enlève tout
+            if "datasetReference" in pbir:
+                del pbir["datasetReference"]
             
-            print(f"⚠️ Rapport créé avec byPath:null (pas de lien dataset)")
+            print(f"⚠️ datasetReference supprimé (rapport créé sans dataset)")
             if dataset_id:
                 print(f"💡 Sera lié au dataset après création via rebindReport API")
             
