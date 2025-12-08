@@ -43,8 +43,6 @@ def get_access_token_spn() -> str:
         "grant_type": "client_credentials",
         "client_id": client_id,
         "client_secret": client_secret,
-        # Scope générique pour les APIs Fabric en client credentials
-        # cf. discussions communautaires :contentReference[oaicite:1]{index=1}
         "scope": "https://api.fabric.microsoft.com/.default",
     }
 
@@ -62,15 +60,15 @@ def get_access_token_spn() -> str:
 
 def fabric_request(method: str, path: str, token: str, **kwargs) -> requests.Response:
     """
-    Appelle l’API Fabric REST (Core) :
+    Appelle l'API Fabric REST (Core) :
       - Ajoute automatiquement le header Authorization: Bearer <token>
-      - Lève une exception si le status HTTP n’est pas 2xx
+      - Lève une exception si le status HTTP n'est pas 2xx
     """
     url = f"{FABRIC_API_BASE}/{path.lstrip('/')}"
     headers = kwargs.pop("headers", {})
     headers["Authorization"] = f"Bearer {token}"
 
-    # Si on envoie un body, on s’assure du content-type JSON
+    # Si on envoie un body, on s'assure du content-type JSON
     if "json" in kwargs and "Content-Type" not in headers:
         headers["Content-Type"] = "application/json"
 
@@ -92,15 +90,14 @@ def get_or_create_workspace(
     capacity_id: Optional[str] = None,
 ) -> str:
     """
-    1. Liste les workspaces (GET /workspaces) :contentReference[oaicite:2]{index=2}
+    1. Liste les workspaces (GET /workspaces)
     2. Si un workspace avec displayName == workspace_name existe -> retourne son id
-    3. Sinon, crée le workspace (POST /workspaces) :contentReference[oaicite:3]{index=3}
+    3. Sinon, crée le workspace (POST /workspaces)
     """
     # 1. List workspaces
     resp = fabric_request("GET", "workspaces", token)
     data = resp.json()
 
-    # Selon la doc Fabric, les collections sont typiquement dans 'value'
     workspaces = data.get("value", data.get("workspaces", []))
 
     for ws in workspaces:
@@ -128,7 +125,7 @@ def list_items_by_type(
     token: str,
 ) -> List[Dict]:
     """
-    Liste les items d’un workspace filtrés par type (Report, SemanticModel, ...) :contentReference[oaicite:4]{index=4}
+    Liste les items d'un workspace filtrés par type (Report, SemanticModel, ...)
       GET /workspaces/{workspaceId}/items?type={item_type}
     """
     path = f"workspaces/{workspace_id}/items?type={item_type}"
@@ -144,7 +141,7 @@ def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
       - crée un part par fichier:
           path       = chemin relatif (style 'definition/report.json')
           payload    = fichier encodé en base64
-          payloadType= InlineBase64 (unique valeur supportée) :contentReference[oaicite:5]{index=5}
+          payloadType= InlineBase64 (unique valeur supportée)
     """
     parts: List[Dict[str, str]] = []
 
@@ -171,6 +168,79 @@ def build_definition_parts_from_folder(folder: str) -> List[Dict[str, str]]:
     return parts
 
 
+def wait_for_long_running_operation(
+    operation_url: str,
+    token: str,
+    max_wait_seconds: int = 300,
+    poll_interval: int = 5,
+) -> Dict:
+    """
+    Suit une opération longue durée (Long Running Operation - LRO) via son URL.
+    L'URL peut pointer vers l'API Fabric OU l'API Power BI (wabi-*).
+    
+    Doc: https://learn.microsoft.com/en-us/rest/api/fabric/articles/long-running-operation
+    """
+    print(f"\n⏳ Suivi de l'opération: {operation_url}")
+    
+    start_time = time.time()
+    attempt = 0
+    
+    while (time.time() - start_time) < max_wait_seconds:
+        attempt += 1
+        
+        try:
+            # Appeler directement l'URL complète (pas via fabric_request qui ajoute le base URL)
+            headers = {"Authorization": f"Bearer {token}"}
+            resp = requests.get(operation_url, headers=headers)
+            
+            print(f"   [{attempt}] GET {operation_url} -> HTTP {resp.status_code}")
+            
+            if not resp.ok:
+                print(f"   ⚠️ Erreur HTTP {resp.status_code}: {resp.text}")
+                time.sleep(poll_interval)
+                continue
+            
+            operation_status = resp.json()
+        except Exception as e:
+            print(f"   ⚠️ Erreur lors du polling (tentative {attempt}): {e}")
+            time.sleep(poll_interval)
+            continue
+        
+        status = operation_status.get("status", "").lower()
+        percent = operation_status.get("percentComplete", 0)
+        
+        # Pour debug: afficher la réponse complète
+        if attempt == 1 or attempt % 10 == 0:
+            print(f"   Réponse opération: {json.dumps(operation_status, indent=2)}")
+        
+        print(f"   [{attempt}] Status: {status} ({percent}%)")
+        
+        # Status possibles: NotStarted, Running, Succeeded, Failed, Undefined
+        # Power BI peut aussi retourner: InProgress, Completed
+        if status in ["succeeded", "completed"]:
+            print("   ✅ Opération terminée avec succès")
+            return operation_status
+        
+        elif status in ["failed", "cancelled"]:
+            error_info = operation_status.get("error", operation_status)
+            print(f"\n❌ ÉCHEC DE L'OPÉRATION:")
+            print(f"   Status: {status}")
+            print(f"   Error: {json.dumps(error_info, indent=2)}")
+            raise FabricApiError(
+                f"Opération {status}: {json.dumps(error_info)}"
+            )
+        
+        elif status in ["running", "notstarted", "inprogress"]:
+            time.sleep(poll_interval)
+            continue
+        
+        else:
+            print(f"   ⚠️ Statut inconnu: {status}, on continue...")
+            time.sleep(poll_interval)
+    
+    raise FabricApiError(f"⏱️ Timeout après {max_wait_seconds}s")
+
+
 def create_or_update_item_from_folder(
     workspace_id: str,
     folder: str,
@@ -181,13 +251,24 @@ def create_or_update_item_from_folder(
     if "." in display_name:
         display_name = display_name.split(".", 1)[0]
 
-    print(f"\n=== Publishing {item_type} from folder: {folder}")
-    print(f"Item displayName = {display_name}")
+    print(f"\n{'='*60}")
+    print(f"📦 Publishing {item_type}: {display_name}")
+    print(f"   Folder: {folder}")
+    print(f"{'='*60}")
 
     parts = build_definition_parts_from_folder(folder)
+    print(f"   📄 {len(parts)} fichiers encodés")
+    
+    # Afficher les fichiers pour debug
+    for part in parts[:5]:  # Limiter à 5 pour pas polluer
+        print(f"      - {part['path']}")
+    if len(parts) > 5:
+        print(f"      ... et {len(parts) - 5} autres fichiers")
+    
     definition = {"parts": parts}
 
     # Check if exists
+    print(f"\n🔍 Vérification si '{display_name}' existe déjà...")
     existing_items = list_items_by_type(workspace_id, item_type, token)
     item_id = None
     for it in existing_items:
@@ -199,6 +280,8 @@ def create_or_update_item_from_folder(
     # CASE 1 : CREATE
     # -------------------------
     if item_id is None:
+        print(f"➕ Item n'existe pas, création en cours...")
+        
         body = {
             "displayName": display_name,
             "type": item_type,
@@ -212,63 +295,91 @@ def create_or_update_item_from_folder(
             json=body,
         )
 
-        # Check if item is in creation with status code 202 
-        try:
-            statuscode = resp.status_code
-        except Exception:
-            statuscode = None
-
-        print(f"headers extracted from fabric resp :{resp.headers}")
-
-        print(statuscode)
-        if resp.status_code == 202:
-            print("⏳ Création en cours (async)...")
-            item_id = None
-            max_attempts = 30
-            attempt = 0
-            
-            while item_id is None and attempt < max_attempts:
-                time.sleep(5)
-                existing_items = list_items_by_type(workspace_id, item_type, token)
-                for it in existing_items:
-                    if it.get("displayName") == display_name:
-                        item_id = it["id"]
-                        break
-                attempt += 1
-            
-            if item_id is None:
-                raise FabricApiError(f"Timeout: {item_type} '{display_name}' non créé après {max_attempts * 5}s")
-            
-            print(f"✅ Créé {item_type} '{display_name}' (id={item_id})")
-            return item_id
+        status_code = resp.status_code
+        print(f"\n📡 Réponse Fabric: HTTP {status_code}")
         
-        if resp.status_code == 201:
-            item = resp.json()
-            item_id = item["id"]
-            print(f"✅ Créé {item_type} '{display_name}' (id={item_id})")
-            return item_id
+        # AFFICHER TOUS LES HEADERS POUR DEBUG
+        print(f"📋 Headers de réponse:")
+        for header, value in resp.headers.items():
+            print(f"   {header}: {value}")
 
-        # Try parsing JSON
-        try:
-            item = resp.json()
-        except Exception:
-            item = None
-
-        if not item or "id" not in item:
-            print("\n❌ FABRIC DID NOT RETURN A VALID ITEM ON CREATION")
-            print("Raw response:")
+        # Cas 1: Création synchrone réussie (201)
+        if status_code == 201:
+            try:
+                item = resp.json()
+                item_id = item["id"]
+                print(f"✅ Créé immédiatement (201) - id={item_id}")
+                return item_id
+            except Exception as e:
+                print(f"❌ Erreur parsing JSON: {e}")
+                print(f"Raw response: {resp.text}")
+                raise FabricApiError("Failed to parse 201 response")
+        
+        # Cas 2: Création asynchrone (202)
+        elif status_code == 202:
+            print("⏳ Création asynchrone (202 Accepted)")
+            
+            # Chercher l'URL de l'opération
+            location = resp.headers.get("Location")
+            retry_after = resp.headers.get("Retry-After", "5")
+            
+            if location:
+                print(f"   Location header trouvé: {location}")
+                print(f"   Retry-After: {retry_after}s")
+                
+                try:
+                    # Attendre un peu avant de commencer le polling
+                    time.sleep(int(retry_after))
+                    
+                    # Suivre l'opération
+                    operation_result = wait_for_long_running_operation(location, token)
+                    
+                    # Récupérer l'item créé
+                    print("\n🔍 Recherche de l'item créé...")
+                    time.sleep(3)  # Attendre que l'item soit bien visible
+                    
+                    items = list_items_by_type(workspace_id, item_type, token)
+                    for it in items:
+                        if it.get("displayName") == display_name:
+                            item_id = it["id"]
+                            print(f"✅ Item trouvé après opération async - id={item_id}")
+                            return item_id
+                    
+                    raise FabricApiError(
+                        f"Opération réussie mais item '{display_name}' introuvable"
+                    )
+                    
+                except Exception as e:
+                    print(f"\n❌ Erreur lors du suivi de l'opération: {e}")
+                    print("📋 Contenu de la réponse 202:")
+                    print(resp.text)
+                    raise
+            
+            else:
+                print("⚠️ PAS DE LOCATION HEADER!")
+                print("📋 Contenu de la réponse 202:")
+                print(resp.text)
+                
+                # Fallback: polling manuel
+                print("\n⚠️ Fallback: polling manuel des items...")
+                return _wait_for_item_manual_polling(
+                    workspace_id, display_name, item_type, token
+                )
+        
+        # Cas 3: Code inattendu
+        else:
+            print(f"❌ Code HTTP inattendu: {status_code}")
+            print(f"📋 Réponse complète:")
             print(resp.text)
             raise FabricApiError(
-                f"Fabric failed to create {item_type} '{display_name}'."
+                f"Unexpected status code {status_code} for item creation"
             )
-
-        item_id = item["id"]
-        print(f"✅ Created {item_type} '{display_name}' (id={item_id})")
-        return item_id
 
     # -------------------------
     # CASE 2 : UPDATE
     # -------------------------
+    print(f"🔄 Item existe déjà (id={item_id}), mise à jour...")
+    
     body = {"definition": definition}
 
     resp = fabric_request(
@@ -278,18 +389,71 @@ def create_or_update_item_from_folder(
         json=body,
     )
 
-    # print(resp) : uncomment to check for response
-    # patch : check update response too
-    try:
-        result = resp.json()
-    except Exception:
-        result = None
+    status_code = resp.status_code
+    print(f"📡 Réponse mise à jour: HTTP {status_code}")
 
-    if result is None:
-        print("\n⚠️ WARNING: Fabric returned NO JSON for update.")
-        print("Raw response:")
+    if status_code == 200:
+        print(f"✅ Mis à jour immédiatement (200)")
+        return item_id
+    
+    elif status_code == 202:
+        location = resp.headers.get("Location")
+        if location:
+            wait_for_long_running_operation(location, token)
+        else:
+            print("⚠️ Pas de Location, attente arbitraire de 10s...")
+            time.sleep(10)
+        
+        print(f"✅ Mis à jour (async)")
+        return item_id
+    
+    else:
+        print(f"❌ Mise à jour échouée: {status_code}")
         print(resp.text)
-        print("Continuing anyway...")
+        raise FabricApiError(f"Update failed with status {status_code}")
 
-    print(f"🔄 Updated {item_type} '{display_name}' (id={item_id})")
-    return item_id
+
+def _wait_for_item_manual_polling(
+    workspace_id: str,
+    display_name: str,
+    item_type: str,
+    token: str,
+    max_attempts: int = 60,
+) -> str:
+    """
+    Fallback: polling manuel si pas de Location header.
+    """
+    print(f"⏳ Attente manuelle de la création (max {max_attempts * 5}s)...")
+    
+    for attempt in range(1, max_attempts + 1):
+        time.sleep(5)
+        
+        try:
+            items = list_items_by_type(workspace_id, item_type, token)
+            for it in items:
+                if it.get("displayName") == display_name:
+                    item_id = it["id"]
+                    print(f"✅ Item trouvé après {attempt * 5}s (id={item_id})")
+                    return item_id
+        except Exception as e:
+            print(f"   ⚠️ Erreur lors du polling (tentative {attempt}): {e}")
+        
+        if attempt % 6 == 0:  # Log toutes les 30s
+            print(f"   Toujours en attente... ({attempt * 5}s écoulées)")
+    
+    # Timeout - afficher les items existants pour debug
+    print(f"\n❌ TIMEOUT après {max_attempts * 5}s")
+    print(f"🔍 Items {item_type} actuels dans le workspace:")
+    try:
+        items = list_items_by_type(workspace_id, item_type, token)
+        if not items:
+            print("   (aucun item)")
+        for it in items:
+            print(f"   - {it.get('displayName')} (id={it.get('id')})")
+    except Exception as e:
+        print(f"   Erreur lors de la récupération des items: {e}")
+    
+    raise FabricApiError(
+        f"Timeout: {item_type} '{display_name}' non créé. "
+        "Vérifier les logs Fabric et les permissions du Service Principal."
+    )
