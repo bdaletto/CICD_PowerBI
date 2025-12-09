@@ -1,0 +1,26 @@
+# workspace-mapping.yml
+# Mapping des artefacts Power BI vers les workspaces par environnement
+
+# Format:
+# artifact_name:
+#   dev: workspace_id_dev
+#   prp: workspace_id_prp
+#   prd: workspace_id_prd
+
+# A noter que le nom de l'artefact doit correspondre EXACTEMENT au nom du dossier sans l'extension dans src, exemple : src/Report_NEO.Report ==> nom: "Report_Neo"
+
+"Rapport Steam":
+  dev: "ec64ffb0-48df-442d-b169-1fec5e64ba29"
+  prp: "e19e8ac6-ab71-42d4-bdb8-0cef612d698a"
+  prd: "1dd6c9cf-d4ee-4825-b473-def0246bc8e7"
+
+"Rapport_Population":
+  dev: "3df9788b-124a-4160-bae0-191e44fb8fd3"
+  prp: "3ef1c2dd-7a81-416e-8aff-4137454510d3"
+  prd: "016fec66-aed9-4239-a66d-03d7a5157f9d"
+
+# Workspace par défaut si l'artefact n'est pas dans le mapping
+default:
+  dev: "ec64ffb0-48df-442d-b169-1fec5e64ba29"
+  prp: "e19e8ac6-ab71-42d4-bdb8-0cef612d698a"
+  prd: "1dd6c9cf-d4ee-4825-b473-def0246bc8e7"

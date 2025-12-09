@@ -1,107 +1,58 @@
-name: deploy
-  
+name: Deploy Power BI to Fabric
+
 on:
-
-  # Deploys to DEV on push to main branch
-
   push:
     branches:
-      - main           
+      - dev
+      - prp
+      - prd
     paths:
-      - '**/src/**'           
-    
-  # Deploys to PRD every day (commented to save Actions minutes in Github)
-
-  # schedule:
-  #   - cron: "0 0 * * *"   # Every day at 00:00  
-    
+      - 'src/**'
   workflow_dispatch:
     inputs:
       environment:
-        type: choice        
+        description: 'Environment à déployer'
         required: true
-        default: 'dev'
-        options: 
-        - dev
-        - prp   
-        - prd 
-      workspace:
-        type: string
-        required: true
-        default: 'BDA_Test_Dev'
-      capacity:
-        type: string
-        required: false
-        default: ''
-      admin_upns:
-        type: string
-        required: false
-        default: ''
-  
-env:        
-  # If its running on schedule deploys to PRD, otherwise goes to DEV
-  environment: ${{ github.event.inputs.environment == '' && (github.event_name == 'schedule' && 'prd' || 'dev') || github.event.inputs.environment }}
-  workspace: ${{ github.event.inputs.workspace == '' && 'BDA_Test_Dev' || github.event.inputs.workspace }}
-  capacity: ${{ github.event.inputs.capacity == '' && vars.FABRIC_CAPACITY || github.event.inputs.capacity }}
-  admin_upns: ${{ github.event.inputs.admin_upns == '' && vars.FABRIC_ADMIN_UPNS || github.event.inputs.admin_upns }}  
+        type: choice
+        options:
+          - dev
+          - prp
+          - prd
 
 jobs:
-
-  deploy:    
+  deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
-
-      - name: Install Fabric CLI
+          python-version: '3.12'
+      
+      - name: Install dependencies
         run: |
-          python -m pip install ms-fabric-cli
-
-      - name: Install Fabric CICD
+          pip install requests
+      
+      - name: Determine environment
+        id: env
         run: |
-          python -m pip install fabric-cicd
-
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            # Extraire l'environnement depuis le nom de la branche
+            BRANCH=${{ github.ref_name }}
+            echo "environment=$BRANCH" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Deploy to Fabric
         env:
+          FABRIC_TENANT_ID: ${{ secrets.SPN_TENANT_ID }}
           FABRIC_CLIENT_ID: ${{ secrets.SPN_CLIENT_ID }}
           FABRIC_CLIENT_SECRET: ${{ secrets.SPN_CLIENT_SECRET }}
-          FABRIC_TENANT_ID: ${{ secrets.SPN_TENANT_ID }}
-          FABRIC_ENV: ${{ env.environment }}
-          FABRIC_WORKSPACE: ${{ env.workspace }}
-          FABRIC_CAPACITY: ${{ env.capacity }}
-          FABRIC_ADMIN_UPNS: ${{ env.admin_upns }}
+          FABRIC_ENV: ${{ steps.env.outputs.environment }}
         run: |
-          echo "=== Starting Fabric Deployment ==="
-          echo "Environment : $FABRIC_ENV"
-          echo "Workspace   : $FABRIC_WORKSPACE"
-          echo "Capacity    : $FABRIC_CAPACITY"
-          echo "Admins      : $FABRIC_ADMIN_UPNS"
-          echo ""
-
-          if [ "$FABRIC_ENV" = "dev" ]; then
-            echo "Deploying to DEV workspace..."
-            python scripts/deploy-dev.py \
-              --workspace "$FABRIC_WORKSPACE" \
-              --capacity "$FABRIC_CAPACITY" \
-              --admin-upns "$FABRIC_ADMIN_UPNS"
-          elif [ "$FABRIC_ENV" = "prp" ]; then
-            echo "Deploying to PRP workspace..."
-            python scripts/deploy-prp.py \
-              --workspace "$FABRIC_WORKSPACE" \
-              --capacity "$FABRIC_CAPACITY" \
-              --admin-upns "$FABRIC_ADMIN_UPNS"
-          else
-            echo " Deploying to PROD workspace..."
-            python scripts/deploy-prd.py \
-              --workspace "$FABRIC_WORKSPACE" \
-              --capacity "$FABRIC_CAPACITY" \
-              --admin-upns "$FABRIC_ADMIN_UPNS"
-          fi
-
-          echo " Fabric deployment finished."
+          echo "=== Déploiement vers $FABRIC_ENV ==="
+          python scripts/deploy.py --env $FABRIC_ENV
