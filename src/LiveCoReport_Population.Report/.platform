@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "LiveCoReport_Population"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "c3200047-e915-484d-90d0-876b9c78b3bb"
+  }
+}

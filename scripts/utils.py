@@ -361,7 +361,7 @@ def rebind_report_to_dataset(
     Relie un rapport à un dataset via l'API Power BI.
     Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/reports/rebind-report-in-group
     """
-    print(f"🔗 Liaison du rapport au dataset...")
+    print(f"\n🔗 Liaison du rapport au dataset...")
     print(f"   Report ID: {report_id}")
     print(f"   Dataset ID: {dataset_id}")
     
@@ -374,58 +374,53 @@ def rebind_report_to_dataset(
         "datasetId": dataset_id
     }
     
+    print(f"   POST {url}")
     resp = requests.post(url, headers=headers, json=body)
+    
+    print(f"   Response: HTTP {resp.status_code}")
     
     if resp.ok:
         print(f"✅ Rapport lié au dataset avec succès")
     else:
-        print(f"⚠️ Échec du rebind: HTTP {resp.status_code}")
-        print(f"   {resp.text}")
-        print(f"   Le rapport a été créé mais n'est pas lié au dataset")
+        print(f"❌ ÉCHEC du rebind: HTTP {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        
+        # Essayer de vérifier le lien actuel
+        try:
+            check_url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}"
+            check_resp = requests.get(check_url, headers={"Authorization": f"Bearer {token}"})
+            if check_resp.ok:
+                report_info = check_resp.json()
+                current_dataset = report_info.get("datasetId", "unknown")
+                print(f"   Dataset actuel du rapport: {current_dataset}")
+                print(f"   Dataset cible: {dataset_id}")
+        except Exception as e:
+            print(f"   Impossible de vérifier: {e}")
+        
+        raise FabricApiError(f"Failed to rebind report: {resp.status_code} - {resp.text}")
 
 
 def deploy_report_via_fabric_workaround(
     workspace_id: str,
     pbip_folder: str,
     token: str,
+    dataset_id: Optional[str] = None,
 ) -> str:
     """
     Déploie un rapport en contournant le problème de definition.pbir.
-    Stratégie: Supprimer temporairement la référence au dataset, créer le rapport vide,
+    Stratégie: Modifier la référence au dataset avec le GUID, créer le rapport,
     puis le relier au dataset via rebind.
+    
+    Si dataset_id n'est pas fourni, lève une erreur car le rapport nécessite un dataset.
     """
     report_name = os.path.basename(pbip_folder).replace(".Report", "")
     
-    # Chercher le dataset associé depuis definition.pbir
-    dataset_id = None
-    dataset_name = None
-    pbir_path = os.path.join(pbip_folder, "definition.pbir")
-    
-    try:
-        if os.path.exists(pbir_path):
-            with open(pbir_path, 'r', encoding='utf-8') as f:
-                pbir_original = json.load(f)
-                if "datasetReference" in pbir_original and "byPath" in pbir_original["datasetReference"]:
-                    path = pbir_original["datasetReference"]["byPath"].get("path", "")
-                    if path:
-                        dataset_name = path.split("/")[-1].replace(".SemanticModel", "")
-                        print(f"🔍 Recherche du dataset '{dataset_name}'...")
-                        items = list_items_by_type(workspace_id, "SemanticModel", token)
-                        for item in items:
-                            if item.get("displayName") == dataset_name:
-                                dataset_id = item["id"]
-                                print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
-                                break
-    except Exception as e:
-        print(f"⚠️ Erreur lors de la recherche du dataset: {e}")
-    
     if not dataset_id:
-        print(f"❌ Impossible de déployer le rapport sans dataset")
-        print(f"   Assure-toi que le SemanticModel '{dataset_name}' existe dans le workspace")
-        raise FabricApiError(f"Dataset '{dataset_name}' not found")
+        print(f"⚠️ Aucun dataset_id fourni pour le rapport '{report_name}'")
+        print(f"   Le rapport sera créé mais pourrait ne pas fonctionner sans dataset")
     
     # Construire les parts en modifiant temporairement definition.pbir
-    print(f"🔧 Modification temporaire de definition.pbir pour contourner les limitations...")
+    print(f"🔧 Modification de definition.pbir...")
     parts = []
     
     for root, _, files in os.walk(pbip_folder):
@@ -437,7 +432,7 @@ def deploy_report_via_fabric_workaround(
                 content = f.read()
             
             # Si c'est definition.pbir, on le modifie pour utiliser byConnection avec le dataset GUID
-            if rel_path == "definition.pbir":
+            if rel_path == "definition.pbir" and dataset_id:
                 pbir_modified = json.loads(content.decode('utf-8'))
                 # Utiliser le GUID du dataset directement dans connectionString
                 pbir_modified["datasetReference"] = {
