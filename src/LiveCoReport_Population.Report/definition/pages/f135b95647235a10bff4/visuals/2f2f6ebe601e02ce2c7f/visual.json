@@ -1,0 +1,99 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "2f2f6ebe601e02ce2c7f",
+  "position": {
+    "x": 9.4488915545918015,
+    "y": 0,
+    "z": 0,
+    "height": 720.00553645989532,
+    "width": 1269.9310249371383,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "map",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Table 1"
+                    }
+                  },
+                  "Property": "Pays ou territoire"
+                }
+              },
+              "queryRef": "Table 1.Pays ou territoire",
+              "nativeQueryRef": "Pays ou territoire",
+              "active": true
+            }
+          ]
+        },
+        "Size": {
+          "projections": [
+            {
+              "field": {
+                "Aggregation": {
+                  "Expression": {
+                    "Column": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "Table 1"
+                        }
+                      },
+                      "Property": "Population au 1er juillet 2023"
+                    }
+                  },
+                  "Function": 5
+                }
+              },
+              "queryRef": "CountNonNull(Table 1.Population au 1er juillet 2023)",
+              "nativeQueryRef": "Nombre de Population au 1er juillet 2023"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "5c72d07a08c2130c2315",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Table 1"
+              }
+            },
+            "Property": "Pays ou territoire"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "5e9a8db6d27888aae7bf",
+        "field": {
+          "Aggregation": {
+            "Expression": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "Table 1"
+                  }
+                },
+                "Property": "Population au 1er juillet 2023"
+              }
+            },
+            "Function": 5
+          }
+        },
+        "type": "Advanced"
+      }
+    ]
+  }
+}
