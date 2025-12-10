@@ -4,6 +4,9 @@ on:
 
   pull_request:
     branches: 
+      - dev
+      - prp
+      - prd
       - main      
     paths:
       - '**/src/*.Report/**'
