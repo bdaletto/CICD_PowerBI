@@ -1,0 +1,59 @@
+table 'Weapons Ref'
+	isHidden
+	lineageTag: 22eda046-3fc5-476d-bf49-989f819db908
+
+	column 'Url Image'
+		dataType: string
+		isHidden
+		lineageTag: 636acdf4-7a4d-40c2-96e9-7b8fc710af27
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: Url Image
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column 'Weapon Category'
+		dataType: string
+		isHidden
+		lineageTag: 2679c9bf-3263-47b9-8e9a-1ea698bbfd32
+		summarizeBy: none
+		sourceColumn: Weapon Category
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column 'ID Stats'
+		dataType: string
+		isHidden
+		lineageTag: 6205a236-5b0b-4e25-9e2c-22ca452a2e82
+		summarizeBy: none
+		sourceColumn: ID Stats
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Weapons Ref-c96d2814-afd3-443e-985f-d9382d63af68' = m
+		mode: import
+		source =
+				let
+				    Source = Table.FromRows(Json.Document(Binary.Decompress(Binary.FromText("rdVBb9sgGIDhv2Ll3OQDG+wwaZraTUoi5dZDD1VlUcxsVAcim8Tbvx+YHkbbU/DBPljyq0foA56fV5215/EbwFW1WlorN5N6U3yjjTDmTcmN+wgno0crh+6i3RvUibdyBA6cwIOZ6oMwun7qlPv3rFsY5FWNymjouZWjhVHwXq6tWU+qsd26MZOGovwhXr/nCFOMcoIrUhZ0dbdyNfd+kvxs9EH/NhivXu4SiCWUAn52fGhl/dDzRt5kJe/WClWY5YiUqHTKkM3mbIxOM1dQEfh14X0Qjwss77bIMXJGXw3gMRLnaWIBIofdILmtHyczNEuICSbEGedqNlcjMUoTY8AV7C6651rcNhMfuJThwnPfk5GVplkZMAZ7fjrJYQEpQ1vCHC8EIydZwin59W/ttnF70Uto84Jir/XZLGQjc5lmJkBK2LtPSrf13gy3mel/ZooYKfDWm0M289nIXCWbKzjoUQpb73qurgsdarkfi9DNQjdSb9PUCNArHBfZbv4pkb8ujp/2GktWMjiqtrNLzbB7iir38zBnv5phnH6YSTgaN8FLnb4VQvMV56NfHL5F8gAjeJyUFV19/+e2eaAfppcW/n4L0cxF4wVOvN8kSAphbblu6sdOyT59mSnG7lbOZ7ZLZ/e6yUI6xrvVfvkH", BinaryEncoding.Base64), Compression.Deflate)), let _t = ((type text) meta [Serialized.Text = true]) in type table [#"Url Image" = _t, #"Weapon Category" = _t, #"ID Stats" = _t]),
+				    #"Type modifié" = Table.TransformColumnTypes(Source,{{"Url Image", type text}, {"Weapon Category", type text}})
+				in
+				    #"Type modifié"
+
+	annotation PBI_QueryRelationships = {"columnCount":3,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Weapons Ref/Type modifié.{Url Image,0}","Section1/Weapons Ref/Type modifié.{Weapon Category,1}","Section1/Weapons Ref/Source.{ID Stats,2}"],"ColumnCount":3,"KeyColumnNames":[],"ColumnIdentities":["Section1/Weapons Ref/Type modifié.{Url Image,0}","Section1/Weapons Ref/Type modifié.{Weapon Category,1}","Section1/Weapons Ref/Source.{ID Stats,2}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

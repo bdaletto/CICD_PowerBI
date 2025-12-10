@@ -1,0 +1,63 @@
+table 'Rom Stats'
+	isHidden
+	lineageTag: 57acb892-8738-46d3-a4dd-da2afa774391
+
+	column name
+		dataType: string
+		isHidden
+		lineageTag: 1e01c373-a96f-4052-bed7-dd48076fc7e2
+		summarizeBy: none
+		sourceColumn: name
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column value
+		dataType: string
+		isHidden
+		lineageTag: d397dbd8-2aae-4f33-b5d0-35d8ab1c1cf8
+		summarizeBy: none
+		sourceColumn: value
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column Player
+		dataType: string
+		isHidden
+		lineageTag: 8673b574-f36a-403b-860f-9e6011ce46c2
+		summarizeBy: none
+		sourceColumn: Player
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Rom Stats-1cc6951d-876f-41ca-ab9b-9537af29dafa' = m
+		mode: import
+		source =
+				let
+				    Source = Json.Document(Web.Contents("http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=582010&key=3D71B244A257FE79DA02720E4AC449E2&steamid=76561198215449708")),
+				    playerstats = Source[playerstats],
+				    stats = playerstats[stats],
+				    #"Converti en table" = Table.FromList(stats, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+				    #"Column1 développé" = Table.ExpandRecordColumn(#"Converti en table", "Column1", {"name", "value"}, {"name", "value"}),
+				    #"Lignes filtrées" = Table.SelectRows(#"Column1 développé", each Text.Contains([name], "Weapon")),
+				    #"Personnalisée ajoutée" = Table.AddColumn(#"Lignes filtrées", "Player", each "Rom")
+				in
+				    #"Personnalisée ajoutée"
+
+	annotation PBI_QueryRelationships = {"columnCount":3,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Rom Stats/Column1 développé.{name,0}","Section1/Rom Stats/Column1 développé.{value,1}","Section1/Rom Stats/Personnalisée ajoutée.{Player,2}"],"ColumnCount":3,"KeyColumnNames":[],"ColumnIdentities":["Section1/Rom Stats/Column1 développé.{name,0}","Section1/Rom Stats/Column1 développé.{value,1}","Section1/Rom Stats/Personnalisée ajoutée.{Player,2}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

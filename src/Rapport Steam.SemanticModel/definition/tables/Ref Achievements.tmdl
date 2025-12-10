@@ -1,0 +1,131 @@
+table 'Ref Achievements'
+	lineageTag: 053d9c61-cc29-473f-b651-f92c55aebc2d
+
+	column gameName
+		dataType: string
+		lineageTag: 25fdd1dd-f7fb-4868-aaca-34251185bcc5
+		summarizeBy: none
+		sourceColumn: gameName
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column gameIcon
+		dataType: string
+		lineageTag: 696c9969-c02c-4bb0-971f-27a7f63f1800
+		summarizeBy: none
+		sourceColumn: gameIcon
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column gameLogo
+		dataType: string
+		lineageTag: 33aaabf0-46d8-4f9f-9879-8313d9e46782
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: gameLogo
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column gameLogoSmall
+		dataType: string
+		lineageTag: 9b7c98d3-7d1c-40fe-95c4-5bae5227f791
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: gameLogoSmall
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column iconClosed
+		dataType: string
+		lineageTag: 2535066a-ee67-440b-8291-990847d4dc81
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: iconClosed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column iconOpen
+		dataType: string
+		lineageTag: 03c149e2-67d8-4944-b63a-8f9f50de4e9f
+		dataCategory: ImageUrl
+		summarizeBy: none
+		sourceColumn: iconOpen
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column name
+		dataType: string
+		lineageTag: 2f04eb0e-a4e8-44d0-b2c7-5994ef9361e4
+		summarizeBy: none
+		sourceColumn: name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column apiname
+		dataType: string
+		lineageTag: aad84a3e-d0e4-42a5-b16d-faa7e0282d68
+		summarizeBy: none
+		sourceColumn: apiname
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column description
+		dataType: string
+		lineageTag: 7608e53e-f0f7-4768-a01e-7519d694bdb8
+		summarizeBy: none
+		sourceColumn: description
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column percent
+		dataType: double
+		lineageTag: 1ac6cd98-ec03-49f3-85fd-85593885d075
+		summarizeBy: sum
+		sourceColumn: percent
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	partition 'Ref Achievements-c2859e14-7ffe-4cfd-9976-e7d697b41eb3' = m
+		mode: import
+		source =
+				let
+				    Source = Xml.Tables(Web.Contents("https://steamcommunity.com/profiles/76561198160709063/stats/582010/achievements/?xml=1")),
+				    #"Type modifié" = Table.TransformColumnTypes(Source,{{"privacyState", type text}, {"visibilityState", Int64.Type}}),
+				    #"game développé" = Table.ExpandTableColumn(#"Type modifié", "game", {"gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall"}, {"gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall"}),
+				    #"player développé" = Table.ExpandTableColumn(#"game développé", "player", {"steamID64", "customURL"}, {"steamID64", "customURL"}),
+				    #"stats développé" = Table.ExpandTableColumn(#"player développé", "stats", {"hoursPlayed"}, {"hoursPlayed"}),
+				    #"achievements développé" = Table.ExpandTableColumn(#"stats développé", "achievements", {"achievement"}, {"achievement"}),
+				    #"achievement développé" = Table.ExpandTableColumn(#"achievements développé", "achievement", {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}, {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}),
+				    #"Colonnes supprimées" = Table.RemoveColumns(#"achievement développé",{"privacyState", "visibilityState", "gameFriendlyName", "gameLink", "steamID64", "customURL", "hoursPlayed", "unlockTimestamp", "Attribute:closed"}),
+				    #"Lignes triées" = Table.Sort(#"Colonnes supprimées",{{"apiname", Order.Ascending}}),
+				    #"Requêtes fusionnées" = Table.NestedJoin(#"Lignes triées", {"apiname"}, achievement, {"name"}, "achievement", JoinKind.LeftOuter),
+				    #"achievement développé1" = Table.ExpandTableColumn(#"Requêtes fusionnées", "achievement", {"percent"}, {"percent"})
+				in
+				    #"achievement développé1"
+
+	annotation PBI_QueryRelationships = {"columnCount":10,"keyColumnNames":[],"queryRelationships":[{"keyColumnCount":1,"keyColumn":7,"otherKeyColumnIdentity":"Section1/achievement/Texte en minuscules.{name,0}","KeyColumnCount":1}],"columnIdentities":["Section1/Ref Achievements/game développé.{gameName,3}","Section1/Ref Achievements/game développé.{gameIcon,5}","Section1/Ref Achievements/game développé.{gameLogo,6}","Section1/Ref Achievements/game développé.{gameLogoSmall,7}","Section1/Ref Achievements/achievement développé.{iconClosed,11}","Section1/Ref Achievements/achievement développé.{iconOpen,12}","Section1/Ref Achievements/achievement développé.{name,13}","Section1/Ref Achievements/achievement développé.{apiname,14}","Section1/Ref Achievements/achievement développé.{description,15}","Section1/achievement/Type modifié.{percent,1}"],"ColumnCount":10,"KeyColumnNames":[],"ColumnIdentities":["Section1/Ref Achievements/game développé.{gameName,3}","Section1/Ref Achievements/game développé.{gameIcon,5}","Section1/Ref Achievements/game développé.{gameLogo,6}","Section1/Ref Achievements/game développé.{gameLogoSmall,7}","Section1/Ref Achievements/achievement développé.{iconClosed,11}","Section1/Ref Achievements/achievement développé.{iconOpen,12}","Section1/Ref Achievements/achievement développé.{name,13}","Section1/Ref Achievements/achievement développé.{apiname,14}","Section1/Ref Achievements/achievement développé.{description,15}","Section1/achievement/Type modifié.{percent,1}"],"RelationshipInfo":[{"keyColumnCount":1,"keyColumn":7,"otherKeyColumnIdentity":"Section1/achievement/Texte en minuscules.{name,0}","KeyColumnCount":1}]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
