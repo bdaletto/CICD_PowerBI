@@ -234,6 +234,80 @@ def wait_for_long_running_operation(
     raise FabricApiError(f"⏱️ Timeout après {max_wait_seconds}s")
 
 
+def find_dataset_cross_workspace(
+    dataset_name: str,
+    workspace_id: str,
+    token: str
+) -> Optional[str]:
+    """
+    Cherche un dataset par nom dans un workspace spécifique.
+    Retourne le dataset_id ou None si introuvable.
+    """
+    print(f"🔍 Recherche du dataset '{dataset_name}' dans workspace {workspace_id}...")
+    
+    try:
+        items = list_items_by_type(workspace_id, "SemanticModel", token)
+        for item in items:
+            if item.get("displayName") == dataset_name:
+                dataset_id = item["id"]
+                print(f"✅ Dataset trouvé: {dataset_name} (id={dataset_id})")
+                return dataset_id
+        
+        print(f"❌ Dataset '{dataset_name}' introuvable dans ce workspace")
+        return None
+    except Exception as e:
+        print(f"⚠️ Erreur lors de la recherche: {e}")
+        return None
+
+
+def rebind_report_cross_workspace(
+    report_workspace_id: str,
+    report_id: str,
+    dataset_workspace_id: str,
+    dataset_id: str,
+    token: str
+) -> None:
+    """
+    Relie un rapport à un dataset qui est dans un AUTRE workspace.
+    Utilise l'API Power BI Rebind qui supporte le cross-workspace.
+    
+    Doc: https://learn.microsoft.com/en-us/rest/api/power-bi/reports/rebind-report-in-group
+    """
+    print(f"\n🔗 Liaison cross-workspace du rapport au dataset...")
+    print(f"   Report workspace: {report_workspace_id}")
+    print(f"   Report ID: {report_id}")
+    print(f"   Dataset workspace: {dataset_workspace_id}")
+    print(f"   Dataset ID: {dataset_id}")
+    
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{report_workspace_id}/reports/{report_id}/Rebind"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    body = {
+        "datasetId": dataset_id
+    }
+    
+    # Si le dataset est dans un autre workspace
+    if dataset_workspace_id != report_workspace_id:
+        print(f"   ⚠️ Cross-workspace binding détecté")
+    
+    resp = requests.post(url, headers=headers, json=body)
+    
+    if resp.ok:
+        print(f"✅ Rapport lié au dataset (cross-workspace)")
+    else:
+        print(f"❌ ÉCHEC du rebind: HTTP {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        
+        # Vérifier les permissions
+        if resp.status_code == 403:
+            print(f"   💡 Le Service Principal a-t-il accès aux DEUX workspaces ?")
+        
+        raise FabricApiError(f"Failed to rebind report: {resp.status_code}")
+
+
 # ============================================================
 # DÉPLOIEMENT DE RAPPORTS VIA API POWER BI
 # ============================================================
