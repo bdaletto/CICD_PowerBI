@@ -103,13 +103,23 @@ def get_dataset_location_for_artifact(
             print(f"   Dataset: {location.get('dataset_name')}")
             return location
     
-    # Fallback: même workspace que le SemanticModel
+    # Fallback 1: même workspace que le SemanticModel (nouveau format)
     if "semanticmodel" in artifact_config:
         sm_workspace = artifact_config["semanticmodel"].get(environment)
         if sm_workspace:
             print(f"📍 Fallback: Dataset dans le même workspace que le SemanticModel")
             return {
                 "workspace_id": sm_workspace,
+                "dataset_name": artifact_name  # Par défaut, même nom
+            }
+    
+    # Fallback 2: format legacy (directement dev/prp/prd)
+    if environment in artifact_config:
+        workspace_id = artifact_config.get(environment)
+        if workspace_id:
+            print(f"📍 Fallback (legacy): Dataset dans le même workspace")
+            return {
+                "workspace_id": workspace_id,
                 "dataset_name": artifact_name  # Par défaut, même nom
             }
     
