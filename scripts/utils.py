@@ -583,8 +583,12 @@ def deploy_report_via_fabric_workaround(
     print(f"✅ Rapport créé/mis à jour: {report_name} (id={item_id})")
     
     # Maintenant rebinder au bon dataset
-    print(f"\n🔗 Liaison au dataset {dataset_name}...")
-    rebind_report_to_dataset(workspace_id, item_id, dataset_id, token)
+    print(f"\n🔗 Liaison au dataset...")
+    try:
+        rebind_report_to_dataset(workspace_id, item_id, dataset_id, token)
+    except Exception as e:
+        print(f"⚠️ Échec du rebind: {e}")
+        print(f"   Le rapport a été créé/mis à jour mais le rebind a échoué")
     
     return item_id
 
