@@ -1,0 +1,47 @@
+table Stats
+	lineageTag: f8e535cc-c99f-4852-8885-58dfdff1abc2
+
+	column name
+		dataType: string
+		lineageTag: 34c86480-01a7-4cf3-9fdb-a707ce0b7308
+		summarizeBy: none
+		sourceColumn: name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column value
+		dataType: int64
+		formatString: 0
+		lineageTag: e01531c5-016f-43f8-8e9e-98725a9321cf
+		summarizeBy: sum
+		sourceColumn: value
+
+		annotation SummarizationSetBy = Automatic
+
+	column Player
+		dataType: string
+		lineageTag: 4feb64ce-8330-47bd-aa89-77aeaf30a2fa
+		summarizeBy: none
+		sourceColumn: Player
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition Stats-295a0852-fe2a-4ae3-b4d6-e6b97aab8da6 = m
+		mode: import
+		source =
+				let
+				    Source = Table.Combine({#"Ben Stats", #"Rom Stats", #"Pierre Stats"}),
+				    #"Type modifié" = Table.TransformColumnTypes(Source,{{"value", Int64.Type}})
+				in
+				    #"Type modifié"
+
+	annotation PBI_QueryRelationships = {"columnCount":3,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Stats/Source.{name,0}","Section1/Stats/Type modifié.{value,1}","Section1/Stats/Source.{Player,2}"],"ColumnCount":3,"KeyColumnNames":[],"ColumnIdentities":["Section1/Stats/Source.{name,0}","Section1/Stats/Type modifié.{value,1}","Section1/Stats/Source.{Player,2}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

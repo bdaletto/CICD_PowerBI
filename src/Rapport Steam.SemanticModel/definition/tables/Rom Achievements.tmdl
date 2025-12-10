@@ -1,0 +1,101 @@
+table 'Rom Achievements'
+	lineageTag: ac33ab9b-3c11-4757-bd26-679936a271ad
+
+	column steamID64
+		dataType: string
+		lineageTag: 2d94e852-9d16-4358-a7eb-cefb358bca59
+		summarizeBy: none
+		sourceColumn: steamID64
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column hoursPlayed
+		dataType: string
+		lineageTag: 5106a21d-ba8f-4cc8-8417-52540e472c8c
+		summarizeBy: none
+		sourceColumn: hoursPlayed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column apiname
+		dataType: string
+		lineageTag: 92ee5b71-f237-4012-92e9-7d09d98ddb27
+		summarizeBy: none
+		sourceColumn: apiname
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column unlockTimestamp
+		dataType: int64
+		formatString: 0
+		lineageTag: 31178bdd-e7bb-4083-bf23-6cc5506fae06
+		summarizeBy: sum
+		sourceColumn: unlockTimestamp
+
+		annotation SummarizationSetBy = Automatic
+
+	column Attribute:closed
+		dataType: string
+		lineageTag: 93eacf0f-4b1c-408d-91c2-eabff7673349
+		summarizeBy: none
+		sourceColumn: Attribute:closed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column DateUnlock
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 21d8ba19-ca54-41f7-97cf-2739e82f1835
+		summarizeBy: none
+		sourceColumn: DateUnlock
+
+		variation Variation
+			isDefault
+			relationship: 3fd445b1-dede-4be6-b56d-b36002bdc33f
+			defaultHierarchy: LocalDateTable_46bf6524-b14e-441c-a4c3-848c5d53b3ac.'Hiérarchie de dates'
+
+		annotation SummarizationSetBy = Automatic
+
+	column Name
+		dataType: string
+		lineageTag: 02b2b580-5688-4fc0-aa82-d2fa4704ed19
+		summarizeBy: none
+		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Rom Achievements-dada73e2-9765-40bf-b963-adfaa64d1a40' = m
+		mode: import
+		source =
+				let
+				    Source = Xml.Tables(Web.Contents("https://steamcommunity.com/profiles/76561198215449708/stats/582010/achievements/?xml=1")),
+				    #"game développé" = Table.ExpandTableColumn(Source, "game", {"gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall"}, {"gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall"}),
+				    #"player développé" = Table.ExpandTableColumn(#"game développé", "player", {"steamID64", "customURL"}, {"steamID64", "customURL"}),
+				    #"stats développé" = Table.ExpandTableColumn(#"player développé", "stats", {"hoursPlayed"}, {"hoursPlayed"}),
+				    #"achievements développé" = Table.ExpandTableColumn(#"stats développé", "achievements", {"achievement"}, {"achievement"}),
+				    #"achievement développé" = Table.ExpandTableColumn(#"achievements développé", "achievement", {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}, {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}),
+				    #"Colonnes supprimées" = Table.RemoveColumns(#"achievement développé",{"privacyState", "visibilityState", "gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall", "customURL", "iconClosed", "iconOpen", "name", "description"}),
+				    #"Type modifié" = Table.TransformColumnTypes(#"Colonnes supprimées",{{"unlockTimestamp", Int64.Type}}),
+				    #"Lignes filtrées" = Table.SelectRows(#"Type modifié", each ([unlockTimestamp] <> null)),
+				    #"Personnalisée ajoutée" =  Table.AddColumn(#"Lignes filtrées", "DateUnlock", each #datetime(1970,1,1,0,0,0)+#duration(0,0,0,[unlockTimestamp])),
+				    #"Type modifié1" = Table.TransformColumnTypes(#"Personnalisée ajoutée",{{"DateUnlock", type datetime}}),
+				    #"Personnalisée ajoutée1" = Table.AddColumn(#"Type modifié1", "Name", each "Rom")
+				in
+				    #"Personnalisée ajoutée1"
+
+	annotation PBI_QueryRelationships = {"columnCount":7,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Rom Achievements/player développé.{steamID64,8}","Section1/Rom Achievements/stats développé.{hoursPlayed,10}","Section1/Rom Achievements/achievement développé.{apiname,14}","Section1/Rom Achievements/Type modifié.{unlockTimestamp,3}","Section1/Rom Achievements/achievement développé.{Attribute:closed,17}","Section1/Rom Achievements/Type modifié1.{DateUnlock,5}","Section1/Rom Achievements/Personnalisée ajoutée1.{Name,6}"],"ColumnCount":7,"KeyColumnNames":[],"ColumnIdentities":["Section1/Rom Achievements/player développé.{steamID64,8}","Section1/Rom Achievements/stats développé.{hoursPlayed,10}","Section1/Rom Achievements/achievement développé.{apiname,14}","Section1/Rom Achievements/Type modifié.{unlockTimestamp,3}","Section1/Rom Achievements/achievement développé.{Attribute:closed,17}","Section1/Rom Achievements/Type modifié1.{DateUnlock,5}","Section1/Rom Achievements/Personnalisée ajoutée1.{Name,6}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
