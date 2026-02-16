@@ -1,0 +1,122 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.5.0/schema.json",
+  "name": "beff14fbbb12942029ff",
+  "position": {
+    "x": 801,
+    "y": 501,
+    "z": 2,
+    "height": 219,
+    "width": 478,
+    "tabOrder": 2
+  },
+  "visual": {
+    "visualType": "treemap",
+    "query": {
+      "queryState": {
+        "Group": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Table 1"
+                    }
+                  },
+                  "Property": "Pays ou territoire"
+                }
+              },
+              "queryRef": "Table 1.Pays ou territoire",
+              "nativeQueryRef": "Pays ou territoire",
+              "active": true
+            }
+          ]
+        },
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Aggregation": {
+                  "Expression": {
+                    "Column": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "Table 1"
+                        }
+                      },
+                      "Property": "Rang (2023)"
+                    }
+                  },
+                  "Function": 5
+                }
+              },
+              "queryRef": "CountNonNull(Table 1.Rang (2023))",
+              "nativeQueryRef": "Nombre de Rang (2023)"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Aggregation": {
+                "Expression": {
+                  "Column": {
+                    "Expression": {
+                      "SourceRef": {
+                        "Entity": "Table 1"
+                      }
+                    },
+                    "Property": "Rang (2023)"
+                  }
+                },
+                "Function": 5
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "6a4e4789b53dd79f917a",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Table 1"
+              }
+            },
+            "Property": "Pays ou territoire"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "4f583dde20c18053cb0b",
+        "field": {
+          "Aggregation": {
+            "Expression": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "Table 1"
+                  }
+                },
+                "Property": "Rang (2023)"
+              }
+            },
+            "Function": 5
+          }
+        },
+        "type": "Advanced"
+      }
+    ]
+  }
+}
