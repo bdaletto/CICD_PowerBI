@@ -1,0 +1,127 @@
+table achievement
+	isHidden
+	lineageTag: 2a973720-51d8-43ab-b181-0906ead64c5f
+
+	measure 'News Last Achievement Obtained' =
+			
+			VAR IDLastAch = [Last Achievement Unlocked ID]
+			VAR DateLastAch = [Last Achievement Unlock Max Date]
+			RETURN
+			CALCULATE(CONCATENATE(MAX('Ref Achievements'[name]),CONCATENATE(" : ", MAX('Ref Achievements'[description]))), 'Ref Achievements'[apiname] = IDLastAch)
+		lineageTag: b69886ef-9991-43c4-9721-a8a31c858ff6
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'News Last Achievement Pic' =
+			
+			VAR LastAchID = [Last Achievement Unlocked ID]
+			RETURN
+			CALCULATE(MAX('Ref Achievements'[iconClosed]), 'Ref Achievements'[apiname] = LastAchID)
+		lineageTag: dcac5af6-753c-470f-b326-ee42e7ed7d0b
+		dataCategory: ImageUrl
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Best Achievement obtained' =
+			
+			VAR BestID = [Obtained rarest achievement]
+			RETURN
+			CALCULATE(CONCATENATE(MAX('Ref Achievements'[name]),CONCATENATE(" : ", MAX('Ref Achievements'[description]))), 'Ref Achievements'[apiname] = BestID)
+		lineageTag: 00729da5-c0ae-4fc0-a912-e611a38f8864
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Best Achievement obtained Pic' =
+			
+			VAR BestID = [Obtained rarest achievement]
+			RETURN
+			CALCULATE(MAX('Ref Achievements'[iconClosed]), 'Ref Achievements'[apiname] = BestID)
+		lineageTag: fae96496-80b4-4396-a957-2844bf0e2fa1
+		dataCategory: ImageUrl
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Unobtained most common achievement rate' =
+			
+			VAR REF = VALUES('Ref Achievements'[apiname])
+			VAR LIST = VALUES('List Achievements'[apiname])
+			RETURN
+			CALCULATE([Most obtained achievement rate], EXCEPT(REF,LIST))
+		lineageTag: bab478ad-8896-4c6f-ba48-c87d28019b2a
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Worst Achievement not obtained' =
+			
+			VAR WorstID = [Unobtained most common achievement]
+			RETURN
+			CALCULATE(CONCATENATE(MAX('Ref Achievements'[name]),CONCATENATE(" : ", MAX('Ref Achievements'[description]))), 'Ref Achievements'[apiname] = WorstID)
+		lineageTag: c2fdad6e-2e13-40ce-8fb5-25d23cc7dce2
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Worst Achievement not obtained pic' =
+			
+			VAR WorstID = [Unobtained most common achievement]
+			RETURN
+			CALCULATE(MAX('Ref Achievements'[iconOpen]), 'Ref Achievements'[apiname] = WorstID)
+		lineageTag: 02d567aa-b25b-462c-92fc-fdb3b388ab5d
+		dataCategory: ImageUrl
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	measure 'Obtained Rarest achievement rate' =
+			
+			VAR REF = VALUES('Ref Achievements'[apiname])
+			VAR LIST = VALUES('List Achievements'[apiname])
+			RETURN
+			CALCULATE([Least obtained achievement rate], INTERSECT(REF,LIST))
+		lineageTag: 31240393-1a2c-4a1c-b8da-45b51fa843d8
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column name
+		dataType: string
+		isHidden
+		lineageTag: 8d5626dc-47ce-4e58-a8ae-3486fd0b05dc
+		summarizeBy: none
+		sourceColumn: name
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column percent
+		dataType: double
+		isHidden
+		lineageTag: 5a369e34-95ba-4f02-9153-18db997a339c
+		summarizeBy: sum
+		sourceColumn: percent
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	partition achievement-fc020647-0e07-4b8a-abf5-d0054981c754 = m
+		mode: import
+		source =
+				let
+				    Source = Xml.Tables(Web.Contents("http://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/?gameid=582010&format=xml")),
+				    Table0 = Source{0}[Table],
+				    Table1 = Table0{0}[Table],
+				    #"Valeur remplacée" = Table.ReplaceValue(Table1,".",",",Replacer.ReplaceText,{"percent"}),
+				    #"Type modifié" = Table.TransformColumnTypes(#"Valeur remplacée",{{"percent", type number}}),
+				    #"Texte en minuscules" = Table.TransformColumns(#"Type modifié",{{"name", Text.Lower, type text}})
+				in
+				    #"Texte en minuscules"
+
+	annotation PBI_QueryRelationships = {"columnCount":2,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/achievement/Texte en minuscules.{name,0}","Section1/achievement/Type modifié.{percent,1}"],"ColumnCount":2,"KeyColumnNames":[],"ColumnIdentities":["Section1/achievement/Texte en minuscules.{name,0}","Section1/achievement/Type modifié.{percent,1}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

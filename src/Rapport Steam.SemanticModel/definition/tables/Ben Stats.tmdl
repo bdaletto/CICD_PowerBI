@@ -1,0 +1,63 @@
+table 'Ben Stats'
+	isHidden
+	lineageTag: 90915d89-6a16-497c-a6ae-834a7e55b68b
+
+	column name
+		dataType: string
+		isHidden
+		lineageTag: 5dd42bea-e467-4f93-be49-9988376f4320
+		summarizeBy: none
+		sourceColumn: name
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column value
+		dataType: string
+		isHidden
+		lineageTag: 78693ed5-cc93-4def-8c76-561a076d00a3
+		summarizeBy: none
+		sourceColumn: value
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column Player
+		dataType: string
+		isHidden
+		lineageTag: 3a6dc1fb-ce34-405e-91ce-4530206805b3
+		summarizeBy: none
+		sourceColumn: Player
+
+		changedProperty = IsHidden
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Ben Stats-8cc03c64-a95e-4269-bb70-9d589bf65246' = m
+		mode: import
+		source =
+				let
+				    Source = Json.Document(Web.Contents("http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=582010&key=3D71B244A257FE79DA02720E4AC449E2&steamid=76561198160709063")),
+				    playerstats = Source[playerstats],
+				    stats = playerstats[stats],
+				    #"Converti en table" = Table.FromList(stats, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+				    #"Column1 développé" = Table.ExpandRecordColumn(#"Converti en table", "Column1", {"name", "value"}, {"name", "value"}),
+				    #"Lignes filtrées" = Table.SelectRows(#"Column1 développé", each ([name] = "WeaponInfo0")),
+				    #"Personnalisée ajoutée" = Table.AddColumn(#"Lignes filtrées", "Player", each "Ben")
+				in
+				    #"Personnalisée ajoutée"
+
+	annotation PBI_QueryRelationships = {"columnCount":3,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Ben Stats/Column1 développé.{name,0}","Section1/Ben Stats/Column1 développé.{value,1}","Section1/Ben Stats/Personnalisée ajoutée.{Player,2}"],"ColumnCount":3,"KeyColumnNames":[],"ColumnIdentities":["Section1/Ben Stats/Column1 développé.{name,0}","Section1/Ben Stats/Column1 développé.{value,1}","Section1/Ben Stats/Personnalisée ajoutée.{Player,2}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

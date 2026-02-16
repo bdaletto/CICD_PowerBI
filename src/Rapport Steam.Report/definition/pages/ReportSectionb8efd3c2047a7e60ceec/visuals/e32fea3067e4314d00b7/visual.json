@@ -1,0 +1,52 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "e32fea3067e4314d00b7",
+  "position": {
+    "x": 1158.0299785867237,
+    "y": 461.84154175588861,
+    "z": 9000,
+    "height": 97.301927194860809,
+    "width": 117.85867237687366,
+    "tabOrder": 9000
+  },
+  "visual": {
+    "visualType": "multiRowCard",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "achievement"
+                    }
+                  },
+                  "Property": "Worst Achievement not obtained pic"
+                }
+              },
+              "queryRef": "achievement.Worst Achievement not obtained pic"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "background": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

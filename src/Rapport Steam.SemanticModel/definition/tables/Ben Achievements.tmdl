@@ -1,0 +1,111 @@
+table 'Ben Achievements'
+	lineageTag: f1def90c-bc8d-4665-99df-a8756988918e
+
+	measure 'Nb Achievements' = COUNTA('List Achievements'[apiname])
+		formatString: 0
+		lineageTag: d8a28d20-d743-4cb9-95b3-150709dfef87
+
+	measure 'Hours played last 2 weeks' = MAX('List Achievements'[hoursPlayed])
+		lineageTag: 0af64b46-52f6-40c8-ab71-17fdcf186fc1
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column steamID64
+		dataType: string
+		lineageTag: 5b658fb1-a4a3-4f98-903e-8a45fb72019f
+		summarizeBy: none
+		sourceColumn: steamID64
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column hoursPlayed
+		dataType: string
+		lineageTag: 83bfd3b2-d6c3-4beb-b691-1abb212655c8
+		summarizeBy: none
+		sourceColumn: hoursPlayed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column apiname
+		dataType: string
+		lineageTag: dfdd2f2e-e105-438b-81e7-92fc736af73f
+		summarizeBy: none
+		sourceColumn: apiname
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column unlockTimestamp
+		dataType: int64
+		formatString: 0
+		lineageTag: 0e73e288-ce83-466a-a294-44fdaf6651c6
+		summarizeBy: sum
+		sourceColumn: unlockTimestamp
+
+		annotation SummarizationSetBy = Automatic
+
+	column Attribute:closed
+		dataType: string
+		lineageTag: aebc818c-e989-424e-ab24-8021c22c526d
+		summarizeBy: none
+		sourceColumn: Attribute:closed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column DateUnlock
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 683a4e9b-389e-4641-88e8-1e5d2e13995f
+		summarizeBy: none
+		sourceColumn: DateUnlock
+
+		variation Variation
+			isDefault
+			relationship: b60c954b-1ed0-422a-b202-0a6074f6395b
+			defaultHierarchy: LocalDateTable_759ef156-f7d2-49ca-bcc3-429cbd4e5054.'Hiérarchie de dates'
+
+		annotation SummarizationSetBy = Automatic
+
+	column Name
+		dataType: string
+		lineageTag: dd986281-bcd0-4038-82ba-814112cd2ef6
+		summarizeBy: none
+		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Ben Achievements-b21eab76-12cc-476b-b2e6-d9d84fb886cd' = m
+		mode: import
+		source =
+				let
+				    Source = Xml.Tables(Web.Contents("https://steamcommunity.com/profiles/76561198160709063/stats/582010/achievements/?xml=1")),
+				    #"Type modifié" = Table.TransformColumnTypes(Source,{{"privacyState", type text}, {"visibilityState", Int64.Type}}),
+				    #"game développé" = Table.ExpandTableColumn(#"Type modifié", "game", {"gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall"}, {"game.gameFriendlyName", "game.gameName", "game.gameLink", "game.gameIcon", "game.gameLogo", "game.gameLogoSmall"}),
+				    #"player développé" = Table.ExpandTableColumn(#"game développé", "player", {"steamID64", "customURL"}, {"steamID64", "customURL"}),
+				    #"stats développé" = Table.ExpandTableColumn(#"player développé", "stats", {"hoursPlayed"}, {"hoursPlayed"}),
+				    #"achievements développé" = Table.ExpandTableColumn(#"stats développé", "achievements", {"achievement"}, {"achievement"}),
+				    #"achievement développé" = Table.ExpandTableColumn(#"achievements développé", "achievement", {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}, {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}),
+				    #"Colonnes supprimées" = Table.RemoveColumns(#"achievement développé",{"privacyState", "visibilityState", "game.gameFriendlyName", "game.gameName", "game.gameLink", "game.gameIcon", "game.gameLogo", "game.gameLogoSmall", "customURL", "iconClosed", "iconOpen", "name", "description"}),
+				    #"Type modifié1" = Table.TransformColumnTypes(#"Colonnes supprimées",{{"unlockTimestamp", Int64.Type}}),
+				    #"Lignes filtrées" = Table.SelectRows(#"Type modifié1", each ([unlockTimestamp] <> null)),
+				    #"Personnalisée ajoutée" = Table.AddColumn(#"Lignes filtrées", "DateUnlock", each #datetime(1970,1,1,0,0,0)+#duration(0,0,0,[unlockTimestamp])),
+				    #"Type modifié2" = Table.TransformColumnTypes(#"Personnalisée ajoutée",{{"DateUnlock", type datetime}}),
+				    #"Personnalisée ajoutée1" = Table.AddColumn(#"Type modifié2", "Name", each "Ben")
+				in
+				    #"Personnalisée ajoutée1"
+
+	annotation PBI_QueryRelationships = {"columnCount":7,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Ben Achievements/player développé.{steamID64,8}","Section1/Ben Achievements/stats développé.{hoursPlayed,10}","Section1/Ben Achievements/achievement développé.{apiname,14}","Section1/Ben Achievements/Type modifié1.{unlockTimestamp,3}","Section1/Ben Achievements/achievement développé.{Attribute:closed,17}","Section1/Ben Achievements/Type modifié2.{DateUnlock,5}","Section1/Ben Achievements/Personnalisée ajoutée1.{Name,6}"],"ColumnCount":7,"KeyColumnNames":[],"ColumnIdentities":["Section1/Ben Achievements/player développé.{steamID64,8}","Section1/Ben Achievements/stats développé.{hoursPlayed,10}","Section1/Ben Achievements/achievement développé.{apiname,14}","Section1/Ben Achievements/Type modifié1.{unlockTimestamp,3}","Section1/Ben Achievements/achievement développé.{Attribute:closed,17}","Section1/Ben Achievements/Type modifié2.{DateUnlock,5}","Section1/Ben Achievements/Personnalisée ajoutée1.{Name,6}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

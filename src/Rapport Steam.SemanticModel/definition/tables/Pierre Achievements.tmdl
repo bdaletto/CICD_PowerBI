@@ -1,0 +1,102 @@
+table 'Pierre Achievements'
+	lineageTag: c0c8a9c3-a6a2-4310-a93d-af8320eb1607
+
+	column steamID64
+		dataType: string
+		lineageTag: 4e54d89f-bfa0-46d0-85d5-22099752bcb3
+		summarizeBy: none
+		sourceColumn: steamID64
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column hoursPlayed
+		dataType: string
+		lineageTag: 22bc095c-69e6-4e30-9b87-e540f4ba97e6
+		summarizeBy: none
+		sourceColumn: hoursPlayed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column apiname
+		dataType: string
+		lineageTag: 1cbb695f-7a75-4bc5-bfa5-6f43c5c4d0c0
+		summarizeBy: none
+		sourceColumn: apiname
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column unlockTimestamp
+		dataType: int64
+		formatString: 0
+		lineageTag: 872b9dd7-a2d8-454a-b424-fd08f22cd1d0
+		summarizeBy: sum
+		sourceColumn: unlockTimestamp
+
+		annotation SummarizationSetBy = Automatic
+
+	column Attribute:closed
+		dataType: string
+		lineageTag: 78614f05-f3d2-4f34-87de-2f57f670855f
+		summarizeBy: none
+		sourceColumn: Attribute:closed
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	column DateUnlock
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 815abe69-920e-4df8-a771-2f300f0f0573
+		summarizeBy: none
+		sourceColumn: DateUnlock
+
+		variation Variation
+			isDefault
+			relationship: a6ab86cc-f6cd-4f5b-8918-4a28c80c69e4
+			defaultHierarchy: LocalDateTable_7210a31f-6dfc-4d34-b163-5d8d5da59f1e.'Hiérarchie de dates'
+
+		annotation SummarizationSetBy = Automatic
+
+	column Name
+		dataType: string
+		lineageTag: 2060fb4f-ef6d-4709-b559-dabe98563677
+		summarizeBy: none
+		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isText":true}
+
+	partition 'Pierre Achievements-38dda08e-5589-4429-ae6e-a06fef10f01e' = m
+		mode: import
+		source =
+				let
+				    Source = Xml.Tables(Web.Contents("https://steamcommunity.com/id/Falisvo/stats/582010/achievements/?xml=1")),
+				    #"Type modifié" = Table.TransformColumnTypes(Source,{{"privacyState", type text}, {"visibilityState", Int64.Type}}),
+				    #"game développé" = Table.ExpandTableColumn(#"Type modifié", "game", {"gameFriendlyName", "gameName", "gameLink", "gameIcon", "gameLogo", "gameLogoSmall"}, {"game.gameFriendlyName", "game.gameName", "game.gameLink", "game.gameIcon", "game.gameLogo", "game.gameLogoSmall"}),
+				    #"player développé" = Table.ExpandTableColumn(#"game développé", "player", {"steamID64", "customURL"}, {"steamID64", "customURL"}),
+				    #"stats développé" = Table.ExpandTableColumn(#"player développé", "stats", {"hoursPlayed"}, {"hoursPlayed"}),
+				    #"achievements développé" = Table.ExpandTableColumn(#"stats développé", "achievements", {"achievement"}, {"achievement"}),
+				    #"achievements.achievement développé" = Table.ExpandTableColumn(#"achievements développé", "achievement", {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}, {"iconClosed", "iconOpen", "name", "apiname", "description", "unlockTimestamp", "Attribute:closed"}),
+				    #"Colonnes supprimées" = Table.RemoveColumns(#"achievements.achievement développé",{"privacyState", "visibilityState", "game.gameFriendlyName", "game.gameName", "game.gameLink", "game.gameIcon", "game.gameLogo", "game.gameLogoSmall", "customURL", "iconClosed", "iconOpen", "name", "description"}),
+				    #"Type modifié1" = Table.TransformColumnTypes(#"Colonnes supprimées",{{"unlockTimestamp", Int64.Type}}),
+				    #"Lignes filtrées" = Table.SelectRows(#"Type modifié1", each ([unlockTimestamp] <> null)),
+				    #"Personnalisée ajoutée" = Table.AddColumn(#"Lignes filtrées", "DateUnlock", each #datetime(1970,1,1,0,0,0)+#duration(0,0,0,[unlockTimestamp])),
+				    #"Type modifié2" = Table.TransformColumnTypes(#"Personnalisée ajoutée",{{"DateUnlock", type datetime}}),
+				    #"Personnalisée ajoutée1" = Table.AddColumn(#"Type modifié2", "Name", each "Pierre")
+				in
+				    #"Personnalisée ajoutée1"
+
+	annotation PBI_QueryRelationships = {"columnCount":7,"keyColumnNames":[],"queryRelationships":[],"columnIdentities":["Section1/Pierre Achievements/player développé.{steamID64,8}","Section1/Pierre Achievements/stats développé.{hoursPlayed,10}","Section1/Pierre Achievements/achievements.achievement développé.{apiname,14}","Section1/Pierre Achievements/Type modifié1.{unlockTimestamp,3}","Section1/Pierre Achievements/achievements.achievement développé.{Attribute:closed,17}","Section1/Pierre Achievements/Type modifié2.{DateUnlock,5}","Section1/Pierre Achievements/Personnalisée ajoutée1.{Name,6}"],"ColumnCount":7,"KeyColumnNames":[],"ColumnIdentities":["Section1/Pierre Achievements/player développé.{steamID64,8}","Section1/Pierre Achievements/stats développé.{hoursPlayed,10}","Section1/Pierre Achievements/achievements.achievement développé.{apiname,14}","Section1/Pierre Achievements/Type modifié1.{unlockTimestamp,3}","Section1/Pierre Achievements/achievements.achievement développé.{Attribute:closed,17}","Section1/Pierre Achievements/Type modifié2.{DateUnlock,5}","Section1/Pierre Achievements/Personnalisée ajoutée1.{Name,6}"],"RelationshipInfo":[]}
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
