@@ -400,7 +400,8 @@ def main():
             print("\n⚠️  Aucun artifact Power BI détecté dans les changements")
             return 0
         
-        deploy_artifacts(environment, artifacts_to_deploy, workspace_mapping, token, is_incremental=True)
+        deploy_artifacts(args.env, artifacts_to_deploy, workspace_mapping, token, is_incremental=True)
+     
         
     else:
         # Mode complet
@@ -418,6 +419,7 @@ def main():
         print(f"  • {len(artifacts_to_deploy['reports'])} Report(s)")
         
         deploy_artifacts(args.env, artifacts_to_deploy, workspace_mapping, token, is_incremental=False)
+       
     
     return 0
 
