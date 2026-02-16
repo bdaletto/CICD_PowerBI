@@ -1,0 +1,126 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/3.0.0/schema.json",
+  "themeCollection": {
+    "baseTheme": {
+      "name": "CY19SU12",
+      "reportVersionAtImport": {
+        "visual": "1.8.42",
+        "report": "2.0.42",
+        "page": "1.3.42"
+      },
+      "type": "SharedResources"
+    }
+  },
+  "objects": {
+    "section": [
+      {
+        "properties": {
+          "verticalAlignment": {
+            "expr": {
+              "Literal": {
+                "Value": "'Top'"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "outspacePane": [
+      {
+        "properties": {
+          "expanded": {
+            "expr": {
+              "Literal": {
+                "Value": "true"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "resourcePackages": [
+    {
+      "name": "htmlViewerB24A1AEC2B4F4998B8E9A380662CAA2A",
+      "type": "CustomVisual",
+      "items": [
+        {
+          "name": "htmlViewerB24A1AEC2B4F4998B8E9A380662CAA2A.pbiviz.json",
+          "path": "htmlViewerB24A1AEC2B4F4998B8E9A380662CAA2A.pbiviz.json",
+          "type": "CustomVisualMetadata"
+        }
+      ]
+    },
+    {
+      "name": "ChicletSlicer1448559807354",
+      "type": "CustomVisual",
+      "items": [
+        {
+          "name": "ChicletSlicer1448559807354.pbiviz.json",
+          "path": "ChicletSlicer1448559807354.pbiviz.json",
+          "type": "CustomVisualMetadata"
+        }
+      ]
+    },
+    {
+      "name": "SharedResources",
+      "type": "SharedResources",
+      "items": [
+        {
+          "name": "CY19SU12",
+          "path": "BaseThemes/CY19SU12.json",
+          "type": "BaseTheme"
+        }
+      ]
+    },
+    {
+      "name": "ScrollingTextVisual1448795304508",
+      "type": "CustomVisual",
+      "items": [
+        {
+          "name": "ScrollingTextVisual1448795304508.pbiviz.json",
+          "path": "ScrollingTextVisual1448795304508.pbiviz.json",
+          "type": "CustomVisualMetadata"
+        }
+      ]
+    },
+    {
+      "name": "RegisteredResources",
+      "type": "RegisteredResources",
+      "items": [
+        {
+          "name": "BlackZero251502882273007.PNG",
+          "path": "BlackZero251502882273007.PNG",
+          "type": "Image"
+        },
+        {
+          "name": "monster-hunter-backgrounds-2927956321628816605.jpg",
+          "path": "monster-hunter-backgrounds-2927956321628816605.jpg",
+          "type": "Image"
+        },
+        {
+          "name": "monster-hunter-world-iceborne-4k-7d13945631206588516.jpg",
+          "path": "monster-hunter-world-iceborne-4k-7d13945631206588516.jpg",
+          "type": "Image"
+        },
+        {
+          "name": "monster-hunter-world-iceborne-4k-7d21439481862492848.jpg",
+          "path": "monster-hunter-world-iceborne-4k-7d21439481862492848.jpg",
+          "type": "Image"
+        },
+        {
+          "name": "monster-hunter-world-iceborne-4k-7d3039200876833057.jpg",
+          "path": "monster-hunter-world-iceborne-4k-7d3039200876833057.jpg",
+          "type": "Image"
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "useStylableVisualContainerHeader": true,
+    "exportDataMode": "AllowSummarized",
+    "defaultDrillFilterOtherVisuals": true,
+    "allowChangeFilterTypes": true,
+    "useEnhancedTooltips": true
+  }
+}

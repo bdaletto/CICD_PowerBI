@@ -1,0 +1,29 @@
+{
+  "version": "2.0.3",
+  "author": {
+    "name": "Fredrik Hedenström",
+    "email": "fredrik.hedenstrom@outlook.com"
+  },
+  "resources": [
+    {
+      "resourceId": "rId0",
+      "sourceType": 5,
+      "file": "resources/ScrollingTextVisual1448795304508.pbiviz.json"
+    }
+  ],
+  "visual": {
+    "guid": "ScrollingTextVisual1448795304508",
+    "name": "Scroller",
+    "displayName": "Scroller",
+    "version": "2.0.3",
+    "description": "The Scroller visual creates an animating scrolling text. You can use a custom text or create it from your dimensions and measures. Various settings makes it possible to control speed, size, status indications, coloring, etc.",
+    "supportUrl": "http://www.fredrikhedenstrom.com",
+    "gitHubUrl": "",
+    "visualClassName": "Visual"
+  },
+  "metadata": {
+    "pbivizjson": {
+      "resourceId": "rId0"
+    }
+  }
+}

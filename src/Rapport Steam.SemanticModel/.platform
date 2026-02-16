@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "Rapport Steam"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "a046400f-86a3-4235-bb0d-ebe7ed640cb1"
+  }
+}

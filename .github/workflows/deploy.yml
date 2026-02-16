@@ -18,6 +18,11 @@ on:
           - dev
           - prp
           - prd
+      force_full_deploy:
+        description: 'Forcer le déploiement complet (ignorer les changements)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -26,6 +31,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Important : récupérer tout l'historique pour la comparaison
       
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -41,18 +48,82 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "force_full=${{ inputs.force_full_deploy }}" >> $GITHUB_OUTPUT
           else
             # Extraire l'environnement depuis le nom de la branche
             BRANCH=${{ github.ref_name }}
             echo "environment=$BRANCH" >> $GITHUB_OUTPUT
+            echo "force_full=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Detect changed files
+        id: changes
+        run: |
+          # Déterminer le commit de référence pour la comparaison
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Utiliser le commit précédent
+            PREVIOUS_COMMIT="${{ github.event.before }}"
+            
+            # Si c'est le premier push sur la branche, comparer avec HEAD~1
+            if [ "$PREVIOUS_COMMIT" = "0000000000000000000000000000000000000000" ]; then
+              PREVIOUS_COMMIT="HEAD~1"
+            fi
+          else
+            # Pour workflow_dispatch, comparer avec HEAD~1
+            PREVIOUS_COMMIT="HEAD~1"
+          fi
+          
+          echo "Comparing with: $PREVIOUS_COMMIT"
+          
+          # Récupérer la liste des fichiers modifiés dans src/
+          CHANGED_FILES=$(git diff --name-only $PREVIOUS_COMMIT HEAD -- src/ || echo "")
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "Aucun fichier modifié dans src/"
+            echo "changed_files=" >> $GITHUB_OUTPUT
+          else
+            echo "Fichiers modifiés détectés:"
+            echo "$CHANGED_FILES"
+            
+            # Convertir en format JSON pour Python
+            CHANGED_JSON=$(echo "$CHANGED_FILES" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "changed_files=$CHANGED_JSON" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Display changes summary
+        run: |
+          if [ "${{ steps.env.outputs.force_full }}" = "true" ]; then
+            echo "MODE: Déploiement COMPLET forcé"
+          elif [ -z "${{ steps.changes.outputs.changed_files }}" ] || [ "${{ steps.changes.outputs.changed_files }}" = "" ]; then
+            echo "Aucun changement détecté dans src/"
+            echo "Le déploiement sera annulé."
+          else
+            echo "MODE: Déploiement INCRÉMENTAL"
+            echo "Les fichiers suivants seront déployés:"
+            echo '${{ steps.changes.outputs.changed_files }}' | jq -r '.[]'
           fi
       
       - name: Deploy to Fabric
+        if: steps.env.outputs.force_full == 'true' || steps.changes.outputs.changed_files != ''
         env:
           FABRIC_TENANT_ID: ${{ secrets.SPN_TENANT_ID }}
           FABRIC_CLIENT_ID: ${{ secrets.SPN_CLIENT_ID }}
           FABRIC_CLIENT_SECRET: ${{ secrets.SPN_CLIENT_SECRET }}
           FABRIC_ENV: ${{ steps.env.outputs.environment }}
+          CHANGED_FILES: ${{ steps.changes.outputs.changed_files }}
+          FORCE_FULL_DEPLOY: ${{ steps.env.outputs.force_full }}
         run: |
           echo "=== Déploiement vers $FABRIC_ENV ==="
-          python scripts/deploy.py --env $FABRIC_ENV
+          
+          if [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+            echo "Mode: Déploiement complet"
+            python scripts/deploy.py --env $FABRIC_ENV
+          else
+            echo "Mode: Déploiement incrémental"
+            python scripts/deploy.py --env $FABRIC_ENV --changed-files "$CHANGED_FILES"
+          fi
+      
+      - name: Skip deployment
+        if: steps.env.outputs.force_full != 'true' && steps.changes.outputs.changed_files == ''
+        run: |
+          echo " ==> Déploiement annulé : aucun changement détecté dans src/"
