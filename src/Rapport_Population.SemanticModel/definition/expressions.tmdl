@@ -1,5 +1,5 @@
 /// Test parameter for CICD
-expression Environment = "dev" meta [IsParameterQuery=true, Type="Any", IsParameterQueryRequired=true]
+expression Environment = "mauvaise valeur" meta [IsParameterQuery=true, Type="Any", IsParameterQueryRequired=true]
 	lineageTag: 50c232d5-6030-46b4-95a2-fa17ad8af6af
 
 	annotation PBI_NavigationStepName = Navigation
