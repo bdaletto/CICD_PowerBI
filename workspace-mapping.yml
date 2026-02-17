@@ -54,6 +54,13 @@
     dev: "3df9788b-124a-4160-bae0-191e44fb8fd3"
     prp: "3ef1c2dd-7a81-416e-8aff-4137454510d3"
     prd: "016fec66-aed9-4239-a66d-03d7a5157f9d"
+  parameters:
+    dev:
+      "Environment": "developpement"
+    prp:
+      "Environment": "préprod"
+    prd:
+      "Environment": "Production"
   report:
     dev: "3df9788b-124a-4160-bae0-191e44fb8fd3"
     prp: "3ef1c2dd-7a81-416e-8aff-4137454510d3"
