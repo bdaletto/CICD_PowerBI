@@ -20,6 +20,8 @@ from utils import (
     deploy_report_via_fabric_workaround,
     find_dataset_cross_workspace,
     rebind_report_cross_workspace,
+    patch_expressions_tmdl,   
+    restore_tmdl_files,
 )
 
 
@@ -305,10 +307,11 @@ def deploy_artifacts(
         print(f"\n📈 Déploiement de {len(semanticmodels)} SemanticModel(s):")
         for sm_name in sorted(semanticmodels):
             print(f"  → {sm_name}")
-            
+
+            originals = {}
             try:
                 folder = f"src/{sm_name}.SemanticModel"
-                
+
                 workspace_id = get_workspace_for_artifact(
                     artifact_name=sm_name,
                     item_type="SemanticModel",
@@ -316,15 +319,32 @@ def deploy_artifacts(
                     mapping=workspace_mapping
                 )
 
+                # Patch des paramètres si configurés dans le mapping
+                artifact_config = workspace_mapping.get(sm_name, {})
+                parameters = artifact_config.get("parameters", {}).get(environment, {})
+
+                if parameters:
+                    print(f"\n🔧 Patch des paramètres pour '{sm_name}' [{environment}]...")
+                    originals = patch_expressions_tmdl(folder, parameters)
+                else:
+                    print(f"   ℹ️ Aucun paramètre configuré pour '{sm_name}' [{environment}]")
+
                 create_or_update_item_from_folder(
                     workspace_id=workspace_id,
                     folder=folder,
                     item_type="SemanticModel",
                     token=token,
                 )
+
             except Exception as e:
                 print(f"❌ Échec pour {sm_name}: {e}")
-                continue
+
+            finally:
+                # Toujours restaurer, même en cas d'erreur
+                if originals:
+                    print(f"\n🔄 Restauration des fichiers originaux...")
+                    restore_tmdl_files(originals)
+
     else:
         print("\n📈 Aucun SemanticModel à déployer")
     

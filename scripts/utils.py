@@ -6,7 +6,7 @@ import zipfile
 import tempfile
 from typing import List, Dict, Optional
 import time
-
+import re
 import requests
 
 # Base Fabric REST API
@@ -22,7 +22,52 @@ class FabricApiError(Exception):
     """Fabric REST API call errors."""
     pass
 
+def patch_expressions_tmdl(folder: str, parameters: dict) -> dict:
+    """
+    Patche les paramètres M dans expressions.tmdl avant déploiement.
+    Retourne un dict {chemin: contenu_original} pour restauration.
+    """
+    expressions_path = os.path.join(folder, "definition", "expressions.tmdl")
 
+    if not os.path.exists(expressions_path):
+        print(f"[WARNING] Pas de expressions.tmdl trouve dans {folder}")
+        return {}
+
+    with open(expressions_path, 'r', encoding='utf-8') as f:
+        original_content = f.read()
+
+    modified_content = original_content
+
+    for param_name, param_value in parameters.items():
+        pattern = rf'(expression\s+{param_name}\s*=\s*")[^"]*(")'
+        replacement = rf'\g<1>{param_value}\g<2>'
+
+        new_content = re.sub(pattern, replacement, modified_content)
+
+        if new_content != modified_content:
+            print(f"   [PATCH] '{param_name}' -> '{param_value}'")
+            modified_content = new_content
+        else:
+            print(f"   [WARNING] Parametre '{param_name}' non trouve dans expressions.tmdl")
+
+    with open(expressions_path, 'w', encoding='utf-8') as f:
+        f.write(modified_content)
+
+    print(f"[OK] expressions.tmdl patche avec succes")
+    return {expressions_path: original_content}
+
+
+def restore_tmdl_files(originals: dict) -> None:
+    """
+    Restaure les fichiers TMDL après déploiement.
+    Garantit que le repo reste propre.
+    """
+    for path, original_content in originals.items():
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(original_content)
+        print(f"[RESTORE] Restaure: {os.path.basename(path)}")
+
+        
 def _get_env_or_fail(name: str) -> str:
     """Get an env var or raise a clear error."""
     value = os.getenv(name)
