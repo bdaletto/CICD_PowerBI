@@ -56,7 +56,7 @@ def validate_semantic_model(
     if not detected_params:
         return errors
 
-    print(f"\n🔍 [{artifact_name}] Paramètres détectés : {detected_params}")
+    print(f"\n[SEARCH] [{artifact_name}] Parametres detectes : {detected_params}")
 
     artifact_config = mapping.get(artifact_name, {})
 
@@ -125,7 +125,7 @@ def validate_semantic_model(
             errors.append({
                 "artifact": artifact_name,
                 "level": "ERROR",
-                "message": f"[{env.upper()}] Paramètres absents : {missing}",
+                "message": f"[{env.upper()}] Parametres absents : {missing}",
                 "suggestion": f"""
         {env}:
 {chr(10).join(f'          {p}: "<valeur-{env}>"' for p in missing)}"""
@@ -135,26 +135,26 @@ def validate_semantic_model(
             errors.append({
                 "artifact": artifact_name,
                 "level": "WARNING",
-                "message": f"[{env.upper()}] Paramètres vides : {empty}",
+                "message": f"[{env.upper()}] Parametres vides : {empty}",
                 "suggestion": f"Renseigne les valeurs manquantes pour : {empty}"
             })
 
         if not missing and not empty:
-            print(f"   ✅ [{env.upper()}] OK")
+            print(f"   [OK] [{env.upper()}] Tous les parametres sont configures")
 
     return errors
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Valide les paramètres Power Query dans workspace-mapping.yml"
+        description="Valide les parametres Power Query dans workspace-mapping.yml"
     )
     parser.add_argument("--src", default="src", help="Dossier source")
     parser.add_argument("--mapping", default="workspace-mapping.yml", help="Fichier de mapping")
     args = parser.parse_args()
 
     print("=" * 60)
-    print("🔎 VALIDATION DES PARAMÈTRES POWER QUERY")
+    print("[SEARCH] VALIDATION DES PARAMETRES POWER QUERY")
     print("=" * 60)
 
     mapping = load_workspace_mapping(args.mapping)
@@ -163,7 +163,7 @@ def main():
     sm_folders = glob.glob(os.path.join(args.src, "*.SemanticModel"))
 
     if not sm_folders:
-        print("ℹ️ Aucun SemanticModel trouvé — rien à valider")
+        print("[INFO] Aucun SemanticModel trouve -- rien a valider")
         sys.exit(0)
 
     all_errors   = []
@@ -181,36 +181,36 @@ def main():
 
     # Rapport final
     print(f"\n{'=' * 60}")
-    print(f"📋 RAPPORT DE VALIDATION")
+    print(f"[REPORT] RAPPORT DE VALIDATION")
     print(f"{'=' * 60}")
 
     if all_warnings:
-        print(f"\n⚠️  {len(all_warnings)} WARNING(S) :")
+        print(f"\n[WARNING] {len(all_warnings)} WARNING(S) :")
         for w in all_warnings:
             print(f"""
    [{w['artifact']}] {w['message']}
-   💡 {w['suggestion']}""")
+   [TIP] {w['suggestion']}""")
 
     if all_errors:
-        print(f"\n❌ {len(all_errors)} ERREUR(S) BLOQUANTE(S) :")
+        print(f"\n[ERROR] {len(all_errors)} ERREUR(S) BLOQUANTE(S) :")
         for e in all_errors:
             print(f"""
    ============================================================
    [{e['artifact']}] {e['message']}
    ------------------------------------------------------------
-   👉 Ajoute dans workspace-mapping.yml :
+   [ACTION] Ajoute dans workspace-mapping.yml :
 {e['suggestion']}
    ============================================================""")
         
         print(f"""
 {'=' * 60}
-❌ VALIDATION ÉCHOUÉE — PR bloquée
+[ERROR] VALIDATION ECHOUEE -- PR bloquee
 {'=' * 60}
 Corrige workspace-mapping.yml avant de merger cette PR.
 """)
-        sys.exit(1)  # ← Fait échouer le workflow GitHub Actions
+        sys.exit(1)
 
-    print(f"\n✅ Validation réussie — tous les paramètres sont configurés\n")
+    print(f"\n[OK] Validation reussie -- tous les parametres sont configures\n")
     sys.exit(0)
 
 
