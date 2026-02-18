@@ -373,6 +373,10 @@ def validate_semantic_model(
 # ============================================================
 
 def main():
+    # Force UTF-8 output sur Windows (GitHub Actions windows-latest = CP1252 par défaut)
+    if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
     parser = argparse.ArgumentParser(
         description="Valide les parametres Power Query dans workspace-mapping.yml"
     )
@@ -444,19 +448,20 @@ def main():
         print(f"Ces sources ne referencent pas de parametres M.")
         print(f"Envisage de les parametriser pour faciliter les deployments multi-env.\n")
 
+        separator = "-" * 50
         for model_warn in all_hardcoded_warnings:
             artifact_name = model_warn["artifact"]
             print(f"\n  [{artifact_name}]")
-            print(f"  {'─' * 50}")
+            print(f"  {separator}")
 
             for file_rel, findings in model_warn["findings_by_file"].items():
                 print(f"  Fichier : {file_rel}")
 
                 for f in findings:
                     if f["type"] == "connector":
-                        print(f"    ⚠  Ligne {f['line']:>4} | {f['connector_label']:<20} | {f['function']}(\"{f['value']}\")")
+                        print(f"    [!] Ligne {f['line']:>4} | {f['connector_label']:<20} | {f['function']}(\"{f['value']}\")")
                     else:
-                        print(f"    ⚠  Ligne {f['line']:>4} | {f['connector_label']:<20} | FROM {f['value']}")
+                        print(f"    [!] Ligne {f['line']:>4} | {f['connector_label']:<20} | FROM {f['value']}")
 
                 print()
 
