@@ -91,16 +91,19 @@ jobs:
           fi
       
       - name: Display changes summary
+        env:
+          CHANGED_FILES: ${{ steps.changes.outputs.changed_files }}
+          FORCE_FULL: ${{ steps.env.outputs.force_full }}
         run: |
-          if [ "${{ steps.env.outputs.force_full }}" = "true" ]; then
+          if [ "$FORCE_FULL" = "true" ]; then
             echo "MODE: Déploiement COMPLET forcé"
-          elif [ -z "${{ steps.changes.outputs.changed_files }}" ] || [ "${{ steps.changes.outputs.changed_files }}" = "" ]; then
+          elif [ -z "$CHANGED_FILES" ] || [ "$CHANGED_FILES" = "" ]; then
             echo "Aucun changement détecté dans src/"
             echo "Le déploiement sera annulé."
           else
             echo "MODE: Déploiement INCRÉMENTAL"
             echo "Les fichiers suivants seront déployés:"
-            echo '${{ steps.changes.outputs.changed_files }}' | jq -r '.[]'
+            echo "$CHANGED_FILES" | jq -r '.[]'
           fi
       
       - name: Deploy to Fabric
